@@ -33,6 +33,7 @@ export default function TokenSearchPage() {
   const [deployerAddress, setDeployerAddress] = useState<string | null>(null);
   const [deployerBalance, setDeployerBalance] = useState<string | null>(null);
   const [deployerTokensCreated, setDeployerTokensCreated] = useState<number | null>(null);
+  const [devSoldStatus, setDevSoldStatus] = useState<"sold" | "holding" | "never_held" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState(0n);
@@ -88,6 +89,7 @@ export default function TokenSearchPage() {
     setDeployerAddress(null);
     setDeployerBalance(null);
     setDeployerTokensCreated(null);
+    setDevSoldStatus(null);
 
     try {
       const [tokenRes, holdersRes, addressRes] = await Promise.all([
@@ -150,18 +152,37 @@ export default function TokenSearchPage() {
         setDeployerAddress(deployer);
 
         try {
-          const [balRes, txRes] = await Promise.all([
+          const [balRes, txRes, transfersRes] = await Promise.all([
             fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
             fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions`),
+            fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&contractaddress=${address}&sort=asc&page=1&offset=50`),
           ]);
 
+          let currentBalance = "0";
           if (balRes.ok) {
             const balances = await balRes.json();
             const tokenBal = balances.find(
               (b: { token: { address_hash: string } }) =>
                 b.token?.address_hash?.toLowerCase() === address.toLowerCase()
             );
-            setDeployerBalance(tokenBal?.value || "0");
+            currentBalance = tokenBal?.value || "0";
+            setDeployerBalance(currentBalance);
+          }
+
+          // Check if dev ever received this token
+          if (transfersRes.ok) {
+            const transfersData = await transfersRes.json();
+            const transfers = transfersData.result || [];
+            const everReceived = transfers.some(
+              (t: { to: string }) => t.to?.toLowerCase() === deployer.toLowerCase()
+            );
+            if (BigInt(currentBalance) > 0n) {
+              setDevSoldStatus("holding");
+            } else if (everReceived) {
+              setDevSoldStatus("sold");
+            } else {
+              setDevSoldStatus("never_held");
+            }
           }
 
           if (txRes.ok) {
@@ -264,9 +285,19 @@ export default function TokenSearchPage() {
                     ) : <p className="text-sm">0</p>}
                   </div>
                   <div>
-                    {deployerBalance && BigInt(deployerBalance) > 0n
-                      ? <span className="text-warning font-semibold text-sm">Dev still holds tokens</span>
-                      : <span className="bg-danger/10 text-danger font-bold text-sm px-2 py-1 rounded">DEV SOLD</span>}
+                    <p className="text-muted text-xs">Dev Status</p>
+                    {devSoldStatus === "holding" && (
+                      <span className="font-semibold text-sm">❌ Dev still holds tokens</span>
+                    )}
+                    {devSoldStatus === "sold" && (
+                      <span className="text-danger font-bold text-sm">✅ DEV SOLD</span>
+                    )}
+                    {devSoldStatus === "never_held" && (
+                      <span className="text-muted font-semibold text-sm">— Dev never held this token</span>
+                    )}
+                    {devSoldStatus === null && deployerBalance !== null && (
+                      <span className="text-muted text-sm">Loading...</span>
+                    )}
                   </div>
                 </div>
               ) : <p className="text-muted text-sm">Deployer info not available</p>}
