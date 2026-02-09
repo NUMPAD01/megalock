@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
 import { parseUnits } from "viem";
 import { MEGABURN_ADDRESS, MEGABURN_ABI, ERC20_ABI } from "@/lib/contracts";
@@ -39,7 +39,9 @@ export default function BurnPage() {
     burn({ address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "burn", args: [token as `0x${string}`, parseUnits(amount, 18)] });
   };
 
-  if (isApproveConfirmed && step === "approve") setStep("burn");
+  useEffect(() => {
+    if (isApproveConfirmed && step === "approve") setStep("burn");
+  }, [isApproveConfirmed, step]);
 
   if (!isConnected) {
     return (

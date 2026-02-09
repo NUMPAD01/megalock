@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseUnits } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
@@ -92,9 +92,9 @@ function TimelockForm() {
     });
   };
 
-  if (isApproveConfirmed && step === "approve") {
-    setStep("create");
-  }
+  useEffect(() => {
+    if (isApproveConfirmed && step === "approve") setStep("create");
+  }, [isApproveConfirmed, step]);
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
@@ -174,7 +174,9 @@ function LinearVestingForm() {
     });
   };
 
-  if (isApproveConfirmed && step === "approve") setStep("create");
+  useEffect(() => {
+    if (isApproveConfirmed && step === "approve") setStep("create");
+  }, [isApproveConfirmed, step]);
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
@@ -270,7 +272,9 @@ function SteppedVestingForm() {
     });
   };
 
-  if (isApproveConfirmed && step === "approve") setStep("create");
+  useEffect(() => {
+    if (isApproveConfirmed && step === "approve") setStep("create");
+  }, [isApproveConfirmed, step]);
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
