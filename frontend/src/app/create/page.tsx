@@ -4,18 +4,10 @@ import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseUnits } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
-import { dateInputValueToTimestamp, getDateFromNow } from "@/lib/utils";
+import { dateInputValueToTimestamp } from "@/lib/utils";
 import { TokenSelector } from "@/components/TokenSelector";
 
 type LockTab = "timelock" | "linear" | "stepped";
-
-const DURATION_PRESETS = [
-  { label: "1 Week", days: 7 },
-  { label: "1 Month", days: 30 },
-  { label: "3 Months", days: 90 },
-  { label: "6 Months", days: 180 },
-  { label: "1 Year", days: 365 },
-];
 
 export default function CreateLockPage() {
   const { isConnected } = useAccount();
@@ -114,14 +106,6 @@ function TimelockForm() {
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Unlock Date</label>
-        <div className="flex gap-2 flex-wrap mb-2">
-          {DURATION_PRESETS.map((p) => (
-            <button key={p.label} type="button" onClick={() => setUnlockDate(getDateFromNow(p.days))}
-              className="text-xs bg-background border border-card-border rounded-lg px-3 py-1.5 hover:border-primary hover:text-primary transition-colors">
-              {p.label}
-            </button>
-          ))}
-        </div>
         <input type="datetime-local" value={unlockDate} onChange={(e) => setUnlockDate(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
       </div>
 
@@ -206,18 +190,6 @@ function LinearVestingForm() {
         <label className="block text-sm font-medium mb-1">Amount</label>
         <input type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
         {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium mb-1">Vesting Duration</label>
-        <div className="flex gap-2 flex-wrap mb-3">
-          {DURATION_PRESETS.map((p) => (
-            <button key={p.label} type="button" onClick={() => { setStartDate(getDateFromNow(0)); setEndDate(getDateFromNow(p.days)); }}
-              className="text-xs bg-background border border-card-border rounded-lg px-3 py-1.5 hover:border-primary hover:text-primary transition-colors">
-              {p.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -331,27 +303,17 @@ function SteppedVestingForm() {
             Total: {totalPercentage}% / 100%
           </span>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-2">
           {milestones.map((m, i) => (
-            <div key={i} className="space-y-1">
-              <div className="flex gap-1 flex-wrap">
-                {DURATION_PRESETS.map((p) => (
-                  <button key={p.label} type="button" onClick={() => updateMilestone(i, "date", getDateFromNow(p.days))}
-                    className="text-[10px] bg-background border border-card-border rounded px-2 py-0.5 hover:border-primary hover:text-primary transition-colors">
-                    {p.label}
-                  </button>
-                ))}
+            <div key={i} className="flex gap-2 items-center">
+              <input type="datetime-local" value={m.date} onChange={(e) => updateMilestone(i, "date", e.target.value)} className="flex-1 bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+              <div className="relative w-24">
+                <input type="number" placeholder="%" value={m.percentage} onChange={(e) => updateMilestone(i, "percentage", e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary pr-6" />
+                <span className="absolute right-3 top-2 text-muted text-sm">%</span>
               </div>
-              <div className="flex gap-2 items-center">
-                <input type="datetime-local" value={m.date} onChange={(e) => updateMilestone(i, "date", e.target.value)} className="flex-1 bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
-                <div className="relative w-24">
-                  <input type="number" placeholder="%" value={m.percentage} onChange={(e) => updateMilestone(i, "percentage", e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary pr-6" />
-                  <span className="absolute right-3 top-2 text-muted text-sm">%</span>
-                </div>
-                {milestones.length > 1 && (
-                  <button onClick={() => removeMilestone(i)} className="text-danger hover:text-danger/80 text-sm px-2">X</button>
-                )}
-              </div>
+              {milestones.length > 1 && (
+                <button onClick={() => removeMilestone(i)} className="text-danger hover:text-danger/80 text-sm px-2">X</button>
+              )}
             </div>
           ))}
         </div>

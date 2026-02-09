@@ -6,6 +6,7 @@ import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "
 import { shortenAddress, formatTokenAmount } from "@/lib/utils";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
+const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
 
 interface TokenInfo {
   name: string;
@@ -105,37 +106,73 @@ export default function TokenSearchPage() {
         setHolders(holdersData.items || []);
       }
 
+      // Find deployer: try creator_address_hash first, then fallback to first mint recipient
+      let deployer: string | null = null;
+
       if (addressRes.ok) {
         const addressData = await addressRes.json();
-        const deployer = addressData.creator_address_hash;
-        if (deployer) {
-          setDeployerAddress(deployer);
+        deployer = addressData.creator_address_hash;
+      }
 
-          try {
-            const [balRes, txRes] = await Promise.all([
-              fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
-              fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions?limit=50`),
-            ]);
-
-            if (balRes.ok) {
-              const balances = await balRes.json();
-              const tokenBal = balances.find(
-                (b: { token: { address_hash: string } }) =>
-                  b.token?.address_hash?.toLowerCase() === address.toLowerCase()
-              );
-              setDeployerBalance(tokenBal?.value || "0");
+      // Fallback: find the first mint event (transfer from 0x000...000) via v1 API
+      if (!deployer) {
+        try {
+          const mintRes = await fetch(
+            `${BLOCKSCOUT_V1}?module=account&action=tokentx&contractaddress=${address}&sort=asc&page=1&offset=5`
+          );
+          if (mintRes.ok) {
+            const mintData = await mintRes.json();
+            const transfers = mintData.result || [];
+            const mint = transfers.find(
+              (t: { from: string }) => t.from === "0x0000000000000000000000000000000000000000"
+            );
+            if (mint) {
+              // If mint recipient is a contract, check its creator
+              const recipientRes = await fetch(`${BLOCKSCOUT_API}/addresses/${mint.to}`);
+              if (recipientRes.ok) {
+                const recipientData = await recipientRes.json();
+                if (recipientData.is_contract && recipientData.creator_address_hash) {
+                  deployer = recipientData.creator_address_hash;
+                } else if (!recipientData.is_contract) {
+                  deployer = mint.to;
+                } else {
+                  deployer = mint.to; // Show factory address as fallback
+                }
+              } else {
+                deployer = mint.to;
+              }
             }
+          }
+        } catch { /* Non-critical */ }
+      }
 
-            if (txRes.ok) {
-              const txData = await txRes.json();
-              const items = txData.items || [];
-              const contractCreations = items.filter(
-                (tx: { created_contract: unknown }) => tx.created_contract !== null && tx.created_contract !== undefined
-              );
-              setDeployerTokensCreated(contractCreations.length);
-            }
-          } catch { /* Non-critical */ }
-        }
+      if (deployer) {
+        setDeployerAddress(deployer);
+
+        try {
+          const [balRes, txRes] = await Promise.all([
+            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
+            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions`),
+          ]);
+
+          if (balRes.ok) {
+            const balances = await balRes.json();
+            const tokenBal = balances.find(
+              (b: { token: { address_hash: string } }) =>
+                b.token?.address_hash?.toLowerCase() === address.toLowerCase()
+            );
+            setDeployerBalance(tokenBal?.value || "0");
+          }
+
+          if (txRes.ok) {
+            const txData = await txRes.json();
+            const items = txData.items || [];
+            const contractCreations = items.filter(
+              (tx: { created_contract: unknown }) => tx.created_contract !== null && tx.created_contract !== undefined
+            );
+            setDeployerTokensCreated(contractCreations.length);
+          }
+        } catch { /* Non-critical */ }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch token data");
