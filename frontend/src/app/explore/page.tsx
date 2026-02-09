@@ -5,6 +5,7 @@ import { useReadContract } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
+import { FadeIn } from "@/components/FadeIn";
 
 export default function ExplorePage() {
   const { data: nextLockId } = useReadContract({
@@ -16,10 +17,12 @@ export default function ExplorePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Explorer</h1>
-        <p className="text-muted mt-2">Browse all locks on MegaLock — {totalLocks} total</p>
-      </div>
+      <FadeIn>
+        <div>
+          <h1 className="text-3xl font-bold">Explorer</h1>
+          <p className="text-muted mt-2">Browse all locks on MegaScan — {totalLocks} total</p>
+        </div>
+      </FadeIn>
 
       {totalLocks === 0 ? (
         <div className="bg-card border border-card-border rounded-xl p-8 text-center">
@@ -198,7 +201,7 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
                 target="_blank" rel="noopener noreferrer"
                 className="text-xs text-primary hover:underline"
                 onClick={(e) => e.stopPropagation()}>View on Blockscout</a>
-              <a href={`/token?address=${lock.token}`}
+              <a href={`/token/${lock.token}`}
                 className="text-xs text-primary hover:underline"
                 onClick={(e) => e.stopPropagation()}>Token Analytics</a>
             </div>

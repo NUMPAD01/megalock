@@ -6,6 +6,7 @@ import { parseUnits } from "viem";
 import { MEGABURN_ADDRESS, MEGABURN_ABI, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount } from "@/lib/utils";
 import { TokenSelector } from "@/components/TokenSelector";
+import { FadeIn } from "@/components/FadeIn";
 
 export default function BurnPage() {
   const { address, isConnected } = useAccount();

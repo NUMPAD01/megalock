@@ -5,6 +5,7 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
+import { FadeIn } from "@/components/FadeIn";
 
 export default function MyLocksPage() {
   const { address, isConnected } = useAccount();
@@ -39,7 +40,7 @@ export default function MyLocksPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">My Locks</h1>
+      <FadeIn><h1 className="text-3xl font-bold">My Locks</h1></FadeIn>
       {lockIds.length === 0 ? (
         <div className="bg-card border border-card-border rounded-xl p-8 text-center">
           <p className="text-muted">No locks found for your address</p>
@@ -214,7 +215,7 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
                   {isCancelling || isCancelConfirming ? "Cancelling..." : "Cancel Lock"}
                 </button>
               )}
-              <a href={`/token?address=${lock.token}`}
+              <a href={`/token/${lock.token}`}
                 className="text-xs text-primary hover:underline py-1.5"
                 onClick={(e) => e.stopPropagation()}>Token Analytics</a>
             </div>

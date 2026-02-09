@@ -6,6 +6,7 @@ import { parseUnits } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
 import { dateInputValueToTimestamp } from "@/lib/utils";
 import { TokenSelector } from "@/components/TokenSelector";
+import { FadeIn } from "@/components/FadeIn";
 
 type LockTab = "timelock" | "linear" | "stepped";
 
