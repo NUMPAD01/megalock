@@ -336,11 +336,11 @@ function TokenSearchContent() {
                   <div className="flex items-center gap-1.5">
                     <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer"
                       title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
-                      <img src="/dexscreener.svg" alt="DexScreener" className="w-6 h-6 rounded-full" />
+                      <img src="/dexscreener.png" alt="DexScreener" className="w-6 h-6 rounded-full" />
                     </a>
                     <a href={`https://www.kumbaya.xyz/swap?outputCurrency=${tokenAddress}`} target="_blank" rel="noopener noreferrer"
                       title="Trade on Kumbaya" className="opacity-70 hover:opacity-100 transition-opacity">
-                      <img src="/kumbaya.svg" alt="Kumbaya" className="w-6 h-6 rounded-full" />
+                      <img src="/kumbaya.png" alt="Kumbaya" className="w-6 h-6 rounded-full" />
                     </a>
                   </div>
                 </div>
