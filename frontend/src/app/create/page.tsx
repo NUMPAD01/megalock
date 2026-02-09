@@ -61,10 +61,12 @@ function TimelockForm() {
   const [cancelable, setCancelable] = useState(false);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
-  const { writeContract: approve, data: approveTx, isPending: isApproving } = useWriteContract();
-  const { writeContract: createLock, data: createTx, isPending: isCreating } = useWriteContract();
-  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } = useWaitForTransactionReceipt({ hash: approveTx });
-  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed } = useWaitForTransactionReceipt({ hash: createTx });
+  const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
+  const { writeContract: createLock, data: createTx, isPending: isCreating, error: createError, reset: resetCreate } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed, error: approveReceiptError } = useWaitForTransactionReceipt({ hash: approveTx });
+  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
+
+  const txError = approveError || approveReceiptError || createError || createReceiptError;
 
   const handleApprove = () => {
     if (!token || !amount) return;
@@ -123,13 +125,20 @@ function TimelockForm() {
         <label htmlFor="cancelable-tl" className="text-sm">Cancelable (creator can cancel and recover unvested tokens)</label>
       </div>
 
+      {txError && (
+        <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
+          <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
+          <button onClick={() => { resetApprove(); resetCreate(); setStep("approve"); }} className="text-primary hover:underline text-xs mt-1">Reset & Retry</button>
+        </div>
+      )}
+
       {step === "approve" && !isApproveConfirmed ? (
         <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isApproving || isApproveConfirming ? "Approving..." : "Approve Token"}
+          {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
         <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !unlockDate} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isCreating || isCreateConfirming ? "Creating Lock..." : "Create Timelock"}
+          {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Timelock"}
         </button>
       )}
 
@@ -150,10 +159,12 @@ function LinearVestingForm() {
   const [cancelable, setCancelable] = useState(false);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
-  const { writeContract: approve, data: approveTx, isPending: isApproving } = useWriteContract();
-  const { writeContract: createLock, data: createTx, isPending: isCreating } = useWriteContract();
-  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } = useWaitForTransactionReceipt({ hash: approveTx });
-  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed } = useWaitForTransactionReceipt({ hash: createTx });
+  const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
+  const { writeContract: createLock, data: createTx, isPending: isCreating, error: createError, reset: resetCreate } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed, error: approveReceiptError } = useWaitForTransactionReceipt({ hash: approveTx });
+  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
+
+  const txError = approveError || approveReceiptError || createError || createReceiptError;
 
   const handleApprove = () => {
     if (!token || !amount) return;
@@ -215,13 +226,20 @@ function LinearVestingForm() {
         <label htmlFor="cancelable-lv" className="text-sm">Cancelable</label>
       </div>
 
+      {txError && (
+        <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
+          <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
+          <button onClick={() => { resetApprove(); resetCreate(); setStep("approve"); }} className="text-primary hover:underline text-xs mt-1">Reset & Retry</button>
+        </div>
+      )}
+
       {step === "approve" && !isApproveConfirmed ? (
         <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isApproving || isApproveConfirming ? "Approving..." : "Approve Token"}
+          {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
         <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !startDate || !endDate} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isCreating || isCreateConfirming ? "Creating..." : "Create Linear Vesting"}
+          {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Linear Vesting"}
         </button>
       )}
 
@@ -240,10 +258,12 @@ function SteppedVestingForm() {
   const [milestones, setMilestones] = useState([{ date: "", percentage: "" }]);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
-  const { writeContract: approve, data: approveTx, isPending: isApproving } = useWriteContract();
-  const { writeContract: createLock, data: createTx, isPending: isCreating } = useWriteContract();
-  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } = useWaitForTransactionReceipt({ hash: approveTx });
-  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed } = useWaitForTransactionReceipt({ hash: createTx });
+  const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
+  const { writeContract: createLock, data: createTx, isPending: isCreating, error: createError, reset: resetCreate } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed, error: approveReceiptError } = useWaitForTransactionReceipt({ hash: approveTx });
+  const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
+
+  const txError = approveError || approveReceiptError || createError || createReceiptError;
 
   const totalPercentage = milestones.reduce((sum, m) => sum + (parseFloat(m.percentage) || 0), 0);
 
@@ -322,13 +342,20 @@ function SteppedVestingForm() {
         <label htmlFor="cancelable-sv" className="text-sm">Cancelable</label>
       </div>
 
+      {txError && (
+        <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
+          <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
+          <button onClick={() => { resetApprove(); resetCreate(); setStep("approve"); }} className="text-primary hover:underline text-xs mt-1">Reset & Retry</button>
+        </div>
+      )}
+
       {step === "approve" && !isApproveConfirmed ? (
         <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isApproving || isApproveConfirming ? "Approving..." : "Approve Token"}
+          {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
         <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || totalPercentage !== 100} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-          {isCreating || isCreateConfirming ? "Creating..." : "Create Stepped Vesting"}
+          {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Stepped Vesting"}
         </button>
       )}
 

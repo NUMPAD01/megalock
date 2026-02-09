@@ -12,10 +12,12 @@ export default function BurnPage() {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"approve" | "burn">("approve");
 
-  const { writeContract: approve, data: approveTx, isPending: isApproving } = useWriteContract();
-  const { writeContract: burn, data: burnTx, isPending: isBurning } = useWriteContract();
-  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } = useWaitForTransactionReceipt({ hash: approveTx });
-  const { isLoading: isBurnConfirming, isSuccess: isBurnConfirmed } = useWaitForTransactionReceipt({ hash: burnTx });
+  const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
+  const { writeContract: burn, data: burnTx, isPending: isBurning, error: burnError, reset: resetBurn } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed, error: approveReceiptError } = useWaitForTransactionReceipt({ hash: approveTx });
+  const { isLoading: isBurnConfirming, isSuccess: isBurnConfirmed, error: burnReceiptError } = useWaitForTransactionReceipt({ hash: burnTx });
+
+  const txError = approveError || approveReceiptError || burnError || burnReceiptError;
 
   const { data: totalBurned } = useReadContract({
     address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "totalBurned",
@@ -86,13 +88,20 @@ export default function BurnPage() {
           <p className="text-muted text-xs mt-1">Burned tokens are sent to 0x000...dEaD and cannot be recovered.</p>
         </div>
 
+        {txError && (
+          <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
+            <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
+            <button onClick={() => { resetApprove(); resetBurn(); setStep("approve"); }} className="text-primary hover:underline text-xs mt-1">Reset & Retry</button>
+          </div>
+        )}
+
         {step === "approve" && !isApproveConfirmed ? (
           <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-            {isApproving || isApproveConfirming ? "Approving..." : "Approve Token"}
+            {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
           </button>
         ) : (
           <button onClick={handleBurn} disabled={isBurning || isBurnConfirming || !token || !amount} className="w-full bg-danger hover:bg-danger/80 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
-            {isBurning || isBurnConfirming ? "Burning..." : "Burn Tokens"}
+            {isBurning ? "Sign in wallet..." : isBurnConfirming ? "Confirming..." : "Burn Tokens"}
           </button>
         )}
 
