@@ -2,16 +2,16 @@
 @import "@rainbow-me/rainbowkit/styles.css";
 
 :root {
-  --background: #0c0c10;
-  --foreground: #e4e4e7;
-  --card: #151519;
-  --card-border: #252529;
-  --primary: #14d4aa;
-  --primary-hover: #0fb899;
-  --accent: #06b6d4;
-  --muted: #71717a;
-  --success: #22c55e;
-  --danger: #ef4444;
+  --background: #18181c;
+  --foreground: #d4d4d8;
+  --card: #202024;
+  --card-border: #2e2e34;
+  --primary: #2dd4a8;
+  --primary-hover: #20c49a;
+  --accent: #3ec9b0;
+  --muted: #6b6b73;
+  --success: #2dd4a8;
+  --danger: #f05252;
 }
 
 @theme inline {

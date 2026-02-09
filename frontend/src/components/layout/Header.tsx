@@ -64,7 +64,7 @@ export function Header() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 w-60 bg-[#0a0a0e] border-r border-card-border flex flex-col transition-transform duration-200 ease-in-out
+        className={`fixed top-0 left-0 bottom-0 z-50 w-60 bg-[#141417] border-r border-card-border flex flex-col transition-transform duration-200 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
         {/* Brand */}
