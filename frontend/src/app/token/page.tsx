@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useReadContract, usePublicClient } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
+import { VestingChart } from "@/components/VestingChart";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
@@ -37,6 +39,15 @@ interface TokenLockInfo {
 
 
 export default function TokenSearchPage() {
+  return (
+    <Suspense fallback={<div className="text-muted text-center py-8">Loading...</div>}>
+      <TokenSearchContent />
+    </Suspense>
+  );
+}
+
+function TokenSearchContent() {
+  const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = useState("");
   const [tokenAddress, setTokenAddress] = useState("");
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
@@ -52,6 +63,7 @@ export default function TokenSearchPage() {
   const [lockedAmount, setLockedAmount] = useState(0n);
   const [lockCount, setLockCount] = useState(0);
   const [tokenLocks, setTokenLocks] = useState<TokenLockInfo[]>([]);
+  const [expandedLockId, setExpandedLockId] = useState<number | null>(null);
 
   const publicClient = usePublicClient();
 
@@ -258,6 +270,16 @@ export default function TokenSearchPage() {
     }
   }, []);
 
+  // Auto-search from ?address= query param
+  useEffect(() => {
+    const addr = searchParams.get("address");
+    if (addr && addr.length === 42 && addr.startsWith("0x")) {
+      setSearchInput(addr);
+      setTokenAddress(addr);
+      fetchTokenData(addr);
+    }
+  }, [searchParams, fetchTokenData]);
+
   const handleSearch = () => {
     const addr = searchInput.trim();
     if (addr.length === 42 && addr.startsWith("0x")) {
@@ -396,25 +418,64 @@ export default function TokenSearchPage() {
                   {tokenLocks.map((lock) => {
                     const remaining = lock.totalAmount - lock.claimedAmount;
                     const vestedPct = lock.totalAmount > 0n ? Number((lock.claimedAmount * 10000n) / lock.totalAmount) / 100 : 0;
+                    const isExpanded = expandedLockId === lock.id;
+                    const now = Math.floor(Date.now() / 1000);
+                    const startT = Number(lock.startTime);
+                    const endT = Number(lock.endTime);
+                    let timeLabel = "";
+                    if (now >= endT) timeLabel = "Fully vested";
+                    else if (now < startT) {
+                      const d = Math.floor((startT - now) / 86400);
+                      const h = Math.floor(((startT - now) % 86400) / 3600);
+                      timeLabel = `Starts in ${d}d ${h}h`;
+                    } else {
+                      const d = Math.floor((endT - now) / 86400);
+                      const h = Math.floor(((endT - now) % 86400) / 3600);
+                      timeLabel = d > 0 ? `${d}d ${h}h left` : `${h}h left`;
+                    }
                     return (
-                      <div key={lock.id} className="bg-background rounded-lg p-3 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-muted">#{lock.id}</span>
-                            <span className="bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded">{getLockTypeLabel(lock.lockType)}</span>
+                      <div key={lock.id}
+                        className={`bg-background rounded-lg transition-all cursor-pointer ${isExpanded ? "ring-1 ring-primary/40" : ""}`}
+                        onClick={() => setExpandedLockId(isExpanded ? null : lock.id)}
+                      >
+                        <div className="p-3 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono text-muted">#{lock.id}</span>
+                              <span className="bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded">{getLockTypeLabel(lock.lockType)}</span>
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${now >= endT ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>{timeLabel}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold">{formatTokenAmount(remaining, decimals)} locked</span>
+                              <span className={`text-[10px] transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>▼</span>
+                            </div>
                           </div>
-                          <span className="text-xs font-semibold">{formatTokenAmount(remaining, decimals)} locked</span>
+                          <div className="flex gap-3 text-[10px] text-muted">
+                            <span>Creator: {shortenAddress(lock.creator)}</span>
+                            <span>Beneficiary: {shortenAddress(lock.beneficiary)}</span>
+                          </div>
+                          <div className="w-full bg-card rounded-full h-1 overflow-hidden">
+                            <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${vestedPct}%` }} />
+                          </div>
                         </div>
-                        <div className="flex gap-3 text-[10px] text-muted">
-                          <span>Creator: {shortenAddress(lock.creator)}</span>
-                          <span>Beneficiary: {shortenAddress(lock.beneficiary)}</span>
-                        </div>
-                        <div className="text-[10px] text-muted">
-                          {formatDateTime(Number(lock.startTime))} → {formatDateTime(Number(lock.endTime))}
-                        </div>
-                        <div className="w-full bg-card rounded-full h-1 overflow-hidden">
-                          <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${vestedPct}%` }} />
-                        </div>
+                        {isExpanded && (
+                          <div className="border-t border-card-border p-3 space-y-3" onClick={(e) => e.stopPropagation()}>
+                            <VestingChart lockType={lock.lockType} startTime={startT} endTime={endT} />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-card rounded-lg p-2">
+                                <p className="text-muted text-[10px]">Total Locked</p>
+                                <p className="font-semibold text-xs">{formatTokenAmount(lock.totalAmount, decimals)}</p>
+                              </div>
+                              <div className="bg-card rounded-lg p-2">
+                                <p className="text-muted text-[10px]">Claimed</p>
+                                <p className="font-semibold text-xs">{formatTokenAmount(lock.claimedAmount, decimals)}</p>
+                              </div>
+                            </div>
+                            <div className="text-[10px] text-muted">
+                              {formatDateTime(startT)} → {formatDateTime(endT)}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -465,6 +526,22 @@ export default function TokenSearchPage() {
               </div>
             </div>
           )}
+
+          {/* DexScreener Chart */}
+          <div className="bg-card border border-card-border rounded-xl p-6">
+            <h3 className="font-semibold mb-3">Price Chart</h3>
+            <div className="rounded-lg overflow-hidden border border-card-border" style={{ height: 400 }}>
+              <iframe
+                src={`https://dexscreener.com/megaeth/${tokenAddress}?embed=1&theme=dark&info=0`}
+                title="DexScreener Chart"
+                className="w-full h-full border-0"
+                allow="clipboard-write"
+              />
+            </div>
+            <p className="text-muted text-xs mt-2">
+              Chart by DexScreener — <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open full chart</a>
+            </p>
+          </div>
         </>
       )}
     </div>
