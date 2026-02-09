@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@import "@rainbow-me/rainbowkit/styles.css";
+
+:root {
+  --background: #0b0b0f;
+  --foreground: #e4e4e7;
+  --card: #16161d;
+  --card-border: #27272a;
+  --primary: #8b5cf6;
+  --primary-hover: #7c3aed;
+  --accent: #06b6d4;
+  --muted: #71717a;
+  --success: #22c55e;
+  --danger: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}

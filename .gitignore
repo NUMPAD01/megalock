@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Env
+.env
+*.env.local
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
