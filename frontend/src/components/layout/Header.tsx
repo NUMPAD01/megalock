@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/locks", label: "My Locks" },
   { href: "/burn", label: "Burn" },
   { href: "/explore", label: "Explorer" },
+  { href: "/token", label: "Token Search" },
 ];
 
 export function Header() {
