@@ -5,6 +5,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagm
 import { parseUnits } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
 import { dateInputValueToTimestamp } from "@/lib/utils";
+import { TokenSelector } from "@/components/TokenSelector";
 
 type LockTab = "timelock" | "linear" | "stepped";
 
@@ -55,6 +56,7 @@ export default function CreateLockPage() {
 
 function TimelockForm() {
   const [token, setToken] = useState("");
+  const [decimals, setDecimals] = useState(18);
   const [beneficiary, setBeneficiary] = useState("");
   const [amount, setAmount] = useState("");
   const [unlockDate, setUnlockDate] = useState("");
@@ -74,7 +76,7 @@ function TimelockForm() {
       address: token as `0x${string}`,
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [MEGALOCK_ADDRESS, parseUnits(amount, 18)],
+      args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)],
     });
   };
 
@@ -87,7 +89,7 @@ function TimelockForm() {
       args: [
         token as `0x${string}`,
         beneficiary as `0x${string}`,
-        parseUnits(amount, 18),
+        parseUnits(amount, decimals),
         BigInt(dateInputValueToTimestamp(unlockDate)),
         cancelable,
       ],
@@ -105,8 +107,8 @@ function TimelockForm() {
       </p>
 
       <div>
-        <label className="block text-sm font-medium mb-1">Token Address</label>
-        <input type="text" placeholder="0x..." value={token} onChange={(e) => setToken(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <label className="block text-sm font-medium mb-1">Select Token</label>
+        <TokenSelector selectedToken={token} onSelect={(addr, dec) => { setToken(addr); setDecimals(dec); setStep("approve"); resetApprove(); resetCreate(); }} />
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Beneficiary Address</label>
@@ -151,6 +153,7 @@ function TimelockForm() {
 
 function LinearVestingForm() {
   const [token, setToken] = useState("");
+  const [decimals, setDecimals] = useState(18);
   const [beneficiary, setBeneficiary] = useState("");
   const [amount, setAmount] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -168,7 +171,7 @@ function LinearVestingForm() {
 
   const handleApprove = () => {
     if (!token || !amount) return;
-    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, 18)] });
+    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleCreate = () => {
@@ -176,7 +179,7 @@ function LinearVestingForm() {
     createLock({
       address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "createLinearVesting",
       args: [
-        token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, 18),
+        token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals),
         BigInt(dateInputValueToTimestamp(startDate)),
         cliffDate ? BigInt(dateInputValueToTimestamp(cliffDate)) : 0n,
         BigInt(dateInputValueToTimestamp(endDate)),
@@ -194,8 +197,8 @@ function LinearVestingForm() {
       <p className="text-muted text-sm">Linear token release with optional cliff period. Tokens vest progressively from start to end.</p>
 
       <div>
-        <label className="block text-sm font-medium mb-1">Token Address</label>
-        <input type="text" placeholder="0x..." value={token} onChange={(e) => setToken(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <label className="block text-sm font-medium mb-1">Select Token</label>
+        <TokenSelector selectedToken={token} onSelect={(addr, dec) => { setToken(addr); setDecimals(dec); setStep("approve"); resetApprove(); resetCreate(); }} />
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Beneficiary Address</label>
@@ -252,6 +255,7 @@ function LinearVestingForm() {
 
 function SteppedVestingForm() {
   const [token, setToken] = useState("");
+  const [decimals, setDecimals] = useState(18);
   const [beneficiary, setBeneficiary] = useState("");
   const [amount, setAmount] = useState("");
   const [cancelable, setCancelable] = useState(false);
@@ -277,7 +281,7 @@ function SteppedVestingForm() {
 
   const handleApprove = () => {
     if (!token || !amount) return;
-    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, 18)] });
+    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleCreate = () => {
@@ -288,7 +292,7 @@ function SteppedVestingForm() {
     }));
     createLock({
       address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "createSteppedVesting",
-      args: [token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, 18), milestonesArgs, cancelable],
+      args: [token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals), milestonesArgs, cancelable],
     });
   };
 
@@ -301,8 +305,8 @@ function SteppedVestingForm() {
       <p className="text-muted text-sm">Define milestones with specific dates and percentages. Tokens unlock at each milestone.</p>
 
       <div>
-        <label className="block text-sm font-medium mb-1">Token Address</label>
-        <input type="text" placeholder="0x..." value={token} onChange={(e) => setToken(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <label className="block text-sm font-medium mb-1">Select Token</label>
+        <TokenSelector selectedToken={token} onSelect={(addr, dec) => { setToken(addr); setDecimals(dec); setStep("approve"); resetApprove(); resetCreate(); }} />
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Beneficiary Address</label>

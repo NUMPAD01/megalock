@@ -5,10 +5,13 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadCont
 import { parseUnits } from "viem";
 import { MEGABURN_ADDRESS, MEGABURN_ABI, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount } from "@/lib/utils";
+import { TokenSelector } from "@/components/TokenSelector";
 
 export default function BurnPage() {
   const { address, isConnected } = useAccount();
   const [token, setToken] = useState("");
+  const [decimals, setDecimals] = useState(18);
+  const [symbol, setSymbol] = useState("");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<"approve" | "burn">("approve");
 
@@ -33,12 +36,12 @@ export default function BurnPage() {
 
   const handleApprove = () => {
     if (!token || !amount) return;
-    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGABURN_ADDRESS, parseUnits(amount, 18)] });
+    approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGABURN_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleBurn = () => {
     if (!token || !amount) return;
-    burn({ address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "burn", args: [token as `0x${string}`, parseUnits(amount, 18)] });
+    burn({ address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "burn", args: [token as `0x${string}`, parseUnits(amount, decimals)] });
   };
 
   useEffect(() => {
@@ -62,8 +65,11 @@ export default function BurnPage() {
         <p className="text-muted text-sm">Permanently burn ERC20 tokens by sending them to the dead address (0x...dEaD). This action is irreversible.</p>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Token Address</label>
-          <input type="text" placeholder="0x..." value={token} onChange={(e) => { setToken(e.target.value); setStep("approve"); }} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <label className="block text-sm font-medium mb-1">Select Token</label>
+          <TokenSelector
+            selectedToken={token}
+            onSelect={(addr, dec, sym) => { setToken(addr); setDecimals(dec); setSymbol(sym); setStep("approve"); resetApprove(); resetBurn(); }}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">Amount to Burn</label>
@@ -74,11 +80,11 @@ export default function BurnPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-background rounded-lg p-3">
               <p className="text-muted text-xs">Total Burned (all users)</p>
-              <p className="font-semibold text-danger">{totalBurned !== undefined ? formatTokenAmount(totalBurned) : "0"}</p>
+              <p className="font-semibold text-danger">{totalBurned !== undefined ? formatTokenAmount(totalBurned, decimals) : "0"} {symbol}</p>
             </div>
             <div className="bg-background rounded-lg p-3">
               <p className="text-muted text-xs">Your Total Burned</p>
-              <p className="font-semibold">{userBurnedAmount !== undefined ? formatTokenAmount(userBurnedAmount) : "0"}</p>
+              <p className="font-semibold">{userBurnedAmount !== undefined ? formatTokenAmount(userBurnedAmount, decimals) : "0"} {symbol}</p>
             </div>
           </div>
         )}
