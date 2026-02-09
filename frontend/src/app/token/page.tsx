@@ -116,7 +116,7 @@ export default function TokenSearchPage() {
         deployer = addressData.creator_address_hash;
       }
 
-      // Fallback: find the first mint event (transfer from 0x000...000) via v1 API
+      // Fallback: find who initiated the first mint transaction (the actual token deployer)
       if (!deployer) {
         try {
           const mintRes = await fetch(
@@ -128,20 +128,12 @@ export default function TokenSearchPage() {
             const mint = transfers.find(
               (t: { from: string }) => t.from === "0x0000000000000000000000000000000000000000"
             );
-            if (mint) {
-              // If mint recipient is a contract, check its creator
-              const recipientRes = await fetch(`${BLOCKSCOUT_API}/addresses/${mint.to}`);
-              if (recipientRes.ok) {
-                const recipientData = await recipientRes.json();
-                if (recipientData.is_contract && recipientData.creator_address_hash) {
-                  deployer = recipientData.creator_address_hash;
-                } else if (!recipientData.is_contract) {
-                  deployer = mint.to;
-                } else {
-                  deployer = mint.to; // Show factory address as fallback
-                }
-              } else {
-                deployer = mint.to;
+            if (mint?.hash) {
+              // Fetch the actual transaction to find who initiated it
+              const txDetailRes = await fetch(`${BLOCKSCOUT_API}/transactions/${mint.hash}`);
+              if (txDetailRes.ok) {
+                const txDetail = await txDetailRes.json();
+                deployer = txDetail.from?.hash || null;
               }
             }
           }
