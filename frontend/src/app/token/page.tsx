@@ -333,16 +333,10 @@ function TokenSearchContent() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl font-bold">{tokenInfo.name} <span className="text-muted font-normal">({tokenInfo.symbol})</span></h2>
-                  <div className="flex items-center gap-1.5">
-                    <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer"
-                      title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
-                      <img src="/dexscreener.png" alt="DexScreener" className="w-6 h-6 rounded-full" />
-                    </a>
-                    <a href={`https://www.kumbaya.xyz/swap?outputCurrency=${tokenAddress}`} target="_blank" rel="noopener noreferrer"
-                      title="Trade on Kumbaya" className="opacity-70 hover:opacity-100 transition-opacity">
-                      <img src="/kumbaya.png" alt="Kumbaya" className="w-6 h-6 rounded-full" />
-                    </a>
-                  </div>
+                  <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer"
+                    title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
+                    <img src="/dexscreener.png" alt="DexScreener" className="w-6 h-6 rounded-full" />
+                  </a>
                 </div>
                 <p className="text-muted text-xs font-mono">{tokenAddress}</p>
               </div>
