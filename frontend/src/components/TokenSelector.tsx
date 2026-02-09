@@ -36,7 +36,7 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
       .then((res) => res.json())
       .then((data) => {
         const erc20s = (data || []).filter(
-          (t: TokenBalance) => t.token.type === "ERC-20" && BigInt(t.value) > 0n
+          (t: TokenBalance) => t.token?.address && t.token.type === "ERC-20" && BigInt(t.value) > 0n
         );
         setTokens(erc20s);
       })
@@ -44,9 +44,11 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
       .finally(() => setLoading(false));
   }, [address]);
 
-  const selected = tokens.find(
-    (t) => t.token.address.toLowerCase() === selectedToken.toLowerCase()
-  );
+  const selected = selectedToken
+    ? tokens.find(
+        (t) => t.token?.address?.toLowerCase() === selectedToken.toLowerCase()
+      )
+    : undefined;
 
   if (loading) {
     return (
@@ -91,7 +93,7 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
         <div className="absolute z-50 mt-1 w-full bg-card border border-card-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
           {tokens.map((t) => {
             const bal = formatUnits(BigInt(t.value), parseInt(t.token.decimals));
-            const isSelected = t.token.address.toLowerCase() === selectedToken.toLowerCase();
+            const isSelected = !!(selectedToken && t.token?.address?.toLowerCase() === selectedToken.toLowerCase());
             return (
               <button
                 key={t.token.address}
