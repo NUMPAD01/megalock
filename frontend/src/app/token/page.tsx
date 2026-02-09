@@ -23,10 +23,6 @@ interface HolderInfo {
   value: string;
 }
 
-interface AddressInfo {
-  creator_address_hash: string | null;
-  token: { name: string; symbol: string } | null;
-}
 
 export default function TokenSearchPage() {
   const [searchInput, setSearchInput] = useState("");
@@ -35,6 +31,7 @@ export default function TokenSearchPage() {
   const [holders, setHolders] = useState<HolderInfo[]>([]);
   const [deployerAddress, setDeployerAddress] = useState<string | null>(null);
   const [deployerBalance, setDeployerBalance] = useState<string | null>(null);
+  const [deployerTokensCreated, setDeployerTokensCreated] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState(0n);
@@ -89,6 +86,7 @@ export default function TokenSearchPage() {
     setHolders([]);
     setDeployerAddress(null);
     setDeployerBalance(null);
+    setDeployerTokensCreated(null);
 
     try {
       const [tokenRes, holdersRes, addressRes] = await Promise.all([
@@ -108,14 +106,17 @@ export default function TokenSearchPage() {
       }
 
       if (addressRes.ok) {
-        const addressData: AddressInfo = await addressRes.json();
-        if (addressData.creator_address_hash) {
-          setDeployerAddress(addressData.creator_address_hash);
+        const addressData = await addressRes.json();
+        const deployer = addressData.creator_address_hash;
+        if (deployer) {
+          setDeployerAddress(deployer);
 
           try {
-            const balRes = await fetch(
-              `${BLOCKSCOUT_API}/addresses/${addressData.creator_address_hash}/token-balances`
-            );
+            const [balRes, txRes] = await Promise.all([
+              fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
+              fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions?limit=50`),
+            ]);
+
             if (balRes.ok) {
               const balances = await balRes.json();
               const tokenBal = balances.find(
@@ -123,6 +124,15 @@ export default function TokenSearchPage() {
                   b.token?.address_hash?.toLowerCase() === address.toLowerCase()
               );
               setDeployerBalance(tokenBal?.value || "0");
+            }
+
+            if (txRes.ok) {
+              const txData = await txRes.json();
+              const items = txData.items || [];
+              const contractCreations = items.filter(
+                (tx: { created_contract: unknown }) => tx.created_contract !== null && tx.created_contract !== undefined
+              );
+              setDeployerTokensCreated(contractCreations.length);
             }
           } catch { /* Non-critical */ }
         }
@@ -199,6 +209,12 @@ export default function TokenSearchPage() {
                     <a href={`https://megaeth.blockscout.com/address/${deployerAddress}`} target="_blank" rel="noopener noreferrer"
                       className="text-primary text-sm font-mono hover:underline">{shortenAddress(deployerAddress)}</a>
                   </div>
+                  {deployerTokensCreated !== null && (
+                    <div>
+                      <p className="text-muted text-xs">Tokens Created on MegaETH</p>
+                      <p className="font-semibold">{deployerTokensCreated} contract{deployerTokensCreated !== 1 ? "s" : ""} deployed</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-muted text-xs">Dev Token Balance</p>
                     {deployerBalance !== null ? (
@@ -211,10 +227,9 @@ export default function TokenSearchPage() {
                     ) : <p className="text-sm">0</p>}
                   </div>
                   <div>
-                    <p className="text-muted text-xs">Still Holding?</p>
                     {deployerBalance && BigInt(deployerBalance) > 0n
-                      ? <span className="text-danger font-semibold text-sm">Yes — Dev still holds tokens</span>
-                      : <span className="text-success font-semibold text-sm">No — Dev has no tokens</span>}
+                      ? <span className="text-warning font-semibold text-sm">Dev still holds tokens</span>
+                      : <span className="bg-danger/10 text-danger font-bold text-sm px-2 py-1 rounded">DEV SOLD</span>}
                   </div>
                 </div>
               ) : <p className="text-muted text-sm">Deployer info not available</p>}
@@ -224,7 +239,7 @@ export default function TokenSearchPage() {
               <h3 className="font-semibold mb-3">Lock & Burn Stats</h3>
               <div className="space-y-3">
                 <div>
-                  <p className="text-muted text-xs">Total Locked (via MegaLock)</p>
+                  <p className="text-muted text-xs">Total Locked</p>
                   <p className="font-semibold text-primary">
                     {lockedAmount > 0n ? formatTokenAmount(lockedAmount, decimals) : "0"} {tokenInfo.symbol}
                   </p>
@@ -234,7 +249,7 @@ export default function TokenSearchPage() {
                   <p className="text-xs text-muted mt-1">{lockCount} active lock{lockCount !== 1 ? "s" : ""} for this token</p>
                 </div>
                 <div>
-                  <p className="text-muted text-xs">Total Burned (via MegaBurn)</p>
+                  <p className="text-muted text-xs">Total Burned</p>
                   <p className="font-semibold text-danger">
                     {totalBurned ? formatTokenAmount(totalBurned, decimals) : "0"} {tokenInfo.symbol}
                   </p>

@@ -40,10 +40,10 @@ function CopyBtn({ text }: { text: string }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="text-muted hover:text-primary text-xs ml-1 transition-colors"
+      className={`text-xs ml-1.5 underline decoration-dotted transition-colors ${copied ? "text-success" : "text-primary hover:text-primary-hover"}`}
       title="Copy address"
     >
-      {copied ? "Copied!" : "Copy"}
+      {copied ? "Copied!" : "[Copy]"}
     </button>
   );
 }
@@ -101,7 +101,10 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
             Creator: {shortenAddress(lock.creator)}
             <CopyBtn text={lock.creator} />
           </span>
-          <span>Beneficiary: {shortenAddress(lock.beneficiary)}</span>
+          <span>
+            Beneficiary: {shortenAddress(lock.beneficiary)}
+            <CopyBtn text={lock.beneficiary} />
+          </span>
         </div>
         <span>{formatDateTime(Number(lock.startTime))} → {formatDateTime(Number(lock.endTime))}</span>
       </div>

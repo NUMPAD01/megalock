@@ -208,6 +208,18 @@ function LinearVestingForm() {
         {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
       </div>
 
+      <div>
+        <label className="block text-sm font-medium mb-1">Vesting Duration</label>
+        <div className="flex gap-2 flex-wrap mb-3">
+          {DURATION_PRESETS.map((p) => (
+            <button key={p.label} type="button" onClick={() => { setStartDate(getDateFromNow(0)); setEndDate(getDateFromNow(p.days)); }}
+              className="text-xs bg-background border border-card-border rounded-lg px-3 py-1.5 hover:border-primary hover:text-primary transition-colors">
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">Start Date</label>
@@ -319,17 +331,27 @@ function SteppedVestingForm() {
             Total: {totalPercentage}% / 100%
           </span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {milestones.map((m, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <input type="datetime-local" value={m.date} onChange={(e) => updateMilestone(i, "date", e.target.value)} className="flex-1 bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
-              <div className="relative w-24">
-                <input type="number" placeholder="%" value={m.percentage} onChange={(e) => updateMilestone(i, "percentage", e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary pr-6" />
-                <span className="absolute right-3 top-2 text-muted text-sm">%</span>
+            <div key={i} className="space-y-1">
+              <div className="flex gap-1 flex-wrap">
+                {DURATION_PRESETS.map((p) => (
+                  <button key={p.label} type="button" onClick={() => updateMilestone(i, "date", getDateFromNow(p.days))}
+                    className="text-[10px] bg-background border border-card-border rounded px-2 py-0.5 hover:border-primary hover:text-primary transition-colors">
+                    {p.label}
+                  </button>
+                ))}
               </div>
-              {milestones.length > 1 && (
-                <button onClick={() => removeMilestone(i)} className="text-danger hover:text-danger/80 text-sm px-2">X</button>
-              )}
+              <div className="flex gap-2 items-center">
+                <input type="datetime-local" value={m.date} onChange={(e) => updateMilestone(i, "date", e.target.value)} className="flex-1 bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                <div className="relative w-24">
+                  <input type="number" placeholder="%" value={m.percentage} onChange={(e) => updateMilestone(i, "percentage", e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary pr-6" />
+                  <span className="absolute right-3 top-2 text-muted text-sm">%</span>
+                </div>
+                {milestones.length > 1 && (
+                  <button onClick={() => removeMilestone(i)} className="text-danger hover:text-danger/80 text-sm px-2">X</button>
+                )}
+              </div>
             </div>
           ))}
         </div>
