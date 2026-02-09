@@ -34,6 +34,8 @@ export default function TokenSearchPage() {
   const [deployerBalance, setDeployerBalance] = useState<string | null>(null);
   const [deployerTokensCreated, setDeployerTokensCreated] = useState<number | null>(null);
   const [devSoldStatus, setDevSoldStatus] = useState<"sold" | "holding" | "never_held" | null>(null);
+  const [devTotalReceived, setDevTotalReceived] = useState<bigint | null>(null);
+  const [devTotalSold, setDevTotalSold] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState(0n);
@@ -90,6 +92,8 @@ export default function TokenSearchPage() {
     setDeployerBalance(null);
     setDeployerTokensCreated(null);
     setDevSoldStatus(null);
+    setDevTotalReceived(null);
+    setDevTotalSold(null);
 
     try {
       const [tokenRes, holdersRes, addressRes] = await Promise.all([
@@ -144,10 +148,10 @@ export default function TokenSearchPage() {
         setDeployerAddress(deployer);
 
         try {
-          const [balRes, txRes, transfersRes] = await Promise.all([
+          const [balRes, transfersRes, allTokenTxRes] = await Promise.all([
             fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
-            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions`),
-            fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&contractaddress=${address}&sort=asc&page=1&offset=50`),
+            fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&contractaddress=${address}&sort=asc&page=1&offset=100`),
+            fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&sort=asc&page=1&offset=200`),
           ]);
 
           let currentBalance = "0";
@@ -161,29 +165,47 @@ export default function TokenSearchPage() {
             setDeployerBalance(currentBalance);
           }
 
-          // Check if dev ever received this token
+          // Calculate total received and total sold for this token
           if (transfersRes.ok) {
             const transfersData = await transfersRes.json();
             const transfers = transfersData.result || [];
-            const everReceived = transfers.some(
-              (t: { to: string }) => t.to?.toLowerCase() === deployer.toLowerCase()
-            );
+            let totalIn = 0n;
+            let totalOut = 0n;
+            for (const t of transfers) {
+              const val = BigInt(t.value || "0");
+              if (t.to?.toLowerCase() === deployer.toLowerCase()) {
+                totalIn += val;
+              }
+              if (t.from?.toLowerCase() === deployer.toLowerCase()) {
+                totalOut += val;
+              }
+            }
+            setDevTotalReceived(totalIn);
+            setDevTotalSold(totalOut);
+
             if (BigInt(currentBalance) > 0n) {
               setDevSoldStatus("holding");
-            } else if (everReceived) {
+            } else if (totalIn > 0n) {
               setDevSoldStatus("sold");
             } else {
               setDevSoldStatus("never_held");
             }
           }
 
-          if (txRes.ok) {
-            const txData = await txRes.json();
-            const items = txData.items || [];
-            const contractCreations = items.filter(
-              (tx: { created_contract: unknown }) => tx.created_contract !== null && tx.created_contract !== undefined
-            );
-            setDeployerTokensCreated(contractCreations.length);
+          // Count tokens created: unique token contracts where deployer received minted tokens (from 0x0)
+          if (allTokenTxRes.ok) {
+            const allTxData = await allTokenTxRes.json();
+            const allTransfers = allTxData.result || [];
+            const mintedTokens = new Set<string>();
+            for (const t of allTransfers) {
+              if (
+                t.from === "0x0000000000000000000000000000000000000000" &&
+                t.to?.toLowerCase() === deployer.toLowerCase()
+              ) {
+                mintedTokens.add(t.contractAddress?.toLowerCase());
+              }
+            }
+            setDeployerTokensCreated(mintedTokens.size);
           }
         } catch { /* Non-critical */ }
       }
@@ -276,13 +298,20 @@ export default function TokenSearchPage() {
                       </div>
                     ) : <p className="text-sm">0</p>}
                   </div>
+                  {devTotalReceived !== null && devTotalReceived > 0n && (
+                    <div>
+                      <p className="text-muted text-xs">Dev Token Flow</p>
+                      <p className="text-sm">Received: <span className="font-semibold">{formatTokenAmount(devTotalReceived, decimals)} {tokenInfo.symbol}</span></p>
+                      <p className="text-sm">Sold/Sent: <span className="font-semibold">{formatTokenAmount(devTotalSold ?? 0n, decimals)} {tokenInfo.symbol}</span></p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-muted text-xs">Dev Status</p>
                     {devSoldStatus === "holding" && (
-                      <span className="font-semibold text-sm">❌ Dev still holds tokens</span>
+                      <span className="text-success font-semibold text-sm">✅ Dev still holds tokens</span>
                     )}
                     {devSoldStatus === "sold" && (
-                      <span className="text-danger font-bold text-sm">✅ DEV SOLD</span>
+                      <span className="text-danger font-bold text-sm">DEV SOLD</span>
                     )}
                     {devSoldStatus === "never_held" && (
                       <span className="text-muted font-semibold text-sm">— Dev never held this token</span>
