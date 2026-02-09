@@ -127,17 +127,20 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
         </div>
 
         <div className="mt-2 flex items-center justify-between text-xs text-muted flex-wrap gap-2">
-          <div className="flex gap-4 flex-wrap">
-            <span>
+          <div className="flex gap-4 flex-wrap items-center">
+            <span className="flex items-center gap-1">
               Token: <span className="font-medium text-foreground">{displayName}</span>
+              <a href={`https://dexscreener.com/megaeth/${lock.token}`} target="_blank" rel="noopener noreferrer" title="DexScreener" onClick={(e) => e.stopPropagation()} className="opacity-60 hover:opacity-100 transition-opacity">
+                <img src="/dexscreener.png" alt="DS" className="w-3.5 h-3.5 rounded-sm inline-block" />
+              </a>
               <CopyBtn text={lock.token} />
             </span>
-            <span>
-              Creator: {shortenAddress(lock.creator)}
+            <span className="flex items-center gap-1">
+              Creator: <a href={`https://megaeth.blockscout.com/address/${lock.creator}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.creator)}</a>
               <CopyBtn text={lock.creator} />
             </span>
-            <span>
-              Beneficiary: {shortenAddress(lock.beneficiary)}
+            <span className="flex items-center gap-1">
+              Beneficiary: <a href={`https://megaeth.blockscout.com/address/${lock.beneficiary}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.beneficiary)}</a>
               <CopyBtn text={lock.beneficiary} />
             </span>
           </div>

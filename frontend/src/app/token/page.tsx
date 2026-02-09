@@ -335,7 +335,7 @@ function TokenSearchContent() {
                   <h2 className="text-xl font-bold">{tokenInfo.name} <span className="text-muted font-normal">({tokenInfo.symbol})</span></h2>
                   <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer"
                     title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
-                    <img src="/dexscreener.png" alt="DexScreener" className="w-6 h-6 rounded-full" />
+                    <img src="/dexscreener.png" alt="DexScreener" className="w-5 h-5 rounded-sm" />
                   </a>
                 </div>
                 <p className="text-muted text-xs font-mono">{tokenAddress}</p>

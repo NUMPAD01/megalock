@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MegaLock - Token Locking & Vesting on MegaETH",
+  title: "MegaScan - Token Locking & Vesting on MegaETH",
   description:
     "Lock, vest, and burn your ERC20 tokens on MegaETH. Timelock, linear vesting, stepped vesting, and token burning.",
 };
@@ -32,8 +32,10 @@ export default function RootLayout({
       >
         <Providers>
           <Header />
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {children}
+          <main className="md:ml-60 pt-14 md:pt-0 min-h-screen">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              {children}
+            </div>
           </main>
         </Providers>
       </body>
