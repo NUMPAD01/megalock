@@ -34,13 +34,16 @@ export default function BurnPage() {
     query: { enabled: !!address && !!token && token.length === 42 },
   });
 
+  const amountNum = parseFloat(amount);
+  const isAmountInvalid = amount !== "" && (isNaN(amountNum) || amountNum <= 0);
+
   const handleApprove = () => {
-    if (!token || !amount) return;
+    if (!token || !amount || amountNum <= 0) return;
     approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGABURN_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleBurn = () => {
-    if (!token || !amount) return;
+    if (!token || !amount || amountNum <= 0) return;
     burn({ address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "burn", args: [token as `0x${string}`, parseUnits(amount, decimals)] });
   };
 
@@ -74,6 +77,7 @@ export default function BurnPage() {
         <div>
           <label className="block text-sm font-medium mb-1">Amount to Burn</label>
           <input type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
         </div>
 
         {token && token.length === 42 && (
@@ -102,11 +106,11 @@ export default function BurnPage() {
         )}
 
         {step === "approve" && !isApproveConfirmed ? (
-          <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+          <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
             {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
           </button>
         ) : (
-          <button onClick={handleBurn} disabled={isBurning || isBurnConfirming || !token || !amount} className="w-full bg-danger hover:bg-danger/80 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+          <button onClick={handleBurn} disabled={isBurning || isBurnConfirming || !token || !amount || isAmountInvalid} className="w-full bg-danger hover:bg-danger/80 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
             {isBurning ? "Sign in wallet..." : isBurnConfirming ? "Confirming..." : "Burn Tokens"}
           </button>
         )}

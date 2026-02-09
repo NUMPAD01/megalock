@@ -4,10 +4,18 @@ import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseUnits } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
-import { dateInputValueToTimestamp } from "@/lib/utils";
+import { dateInputValueToTimestamp, getDateFromNow } from "@/lib/utils";
 import { TokenSelector } from "@/components/TokenSelector";
 
 type LockTab = "timelock" | "linear" | "stepped";
+
+const DURATION_PRESETS = [
+  { label: "1 Week", days: 7 },
+  { label: "1 Month", days: 30 },
+  { label: "3 Months", days: 90 },
+  { label: "6 Months", days: 180 },
+  { label: "1 Year", days: 365 },
+];
 
 export default function CreateLockPage() {
   const { isConnected } = useAccount();
@@ -26,23 +34,16 @@ export default function CreateLockPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold">Create Lock</h1>
 
-      {/* Tabs */}
       <div className="flex bg-card border border-card-border rounded-xl p-1">
         {(["timelock", "linear", "stepped"] as LockTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab
-                ? "bg-primary text-white"
-                : "text-muted hover:text-foreground"
+              activeTab === tab ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
-            {tab === "timelock"
-              ? "Timelock"
-              : tab === "linear"
-              ? "Linear Vesting"
-              : "Stepped Vesting"}
+            {tab === "timelock" ? "Timelock" : tab === "linear" ? "Linear Vesting" : "Stepped Vesting"}
           </button>
         ))}
       </div>
@@ -60,7 +61,6 @@ function TimelockForm() {
   const [beneficiary, setBeneficiary] = useState("");
   const [amount, setAmount] = useState("");
   const [unlockDate, setUnlockDate] = useState("");
-  const [cancelable, setCancelable] = useState(false);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
   const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
@@ -69,29 +69,24 @@ function TimelockForm() {
   const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
 
   const txError = approveError || approveReceiptError || createError || createReceiptError;
+  const amountNum = parseFloat(amount);
+  const isAmountInvalid = amount !== "" && (isNaN(amountNum) || amountNum <= 0);
 
   const handleApprove = () => {
-    if (!token || !amount) return;
+    if (!token || !amount || amountNum <= 0) return;
     approve({
-      address: token as `0x${string}`,
-      abi: ERC20_ABI,
-      functionName: "approve",
+      address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve",
       args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)],
     });
   };
 
   const handleCreate = () => {
-    if (!token || !beneficiary || !amount || !unlockDate) return;
+    if (!token || !beneficiary || !amount || !unlockDate || amountNum <= 0) return;
     createLock({
-      address: MEGALOCK_ADDRESS,
-      abi: MEGALOCK_ABI,
-      functionName: "createTimeLock",
+      address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "createTimeLock",
       args: [
-        token as `0x${string}`,
-        beneficiary as `0x${string}`,
-        parseUnits(amount, decimals),
-        BigInt(dateInputValueToTimestamp(unlockDate)),
-        cancelable,
+        token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals),
+        BigInt(dateInputValueToTimestamp(unlockDate)), false,
       ],
     });
   };
@@ -102,9 +97,7 @@ function TimelockForm() {
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
-      <p className="text-muted text-sm">
-        Lock tokens until a specific date. 100% unlock at the end.
-      </p>
+      <p className="text-muted text-sm">Lock tokens until a specific date. 100% unlock at the end.</p>
 
       <div>
         <label className="block text-sm font-medium mb-1">Select Token</label>
@@ -117,14 +110,19 @@ function TimelockForm() {
       <div>
         <label className="block text-sm font-medium mb-1">Amount</label>
         <input type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Unlock Date</label>
+        <div className="flex gap-2 flex-wrap mb-2">
+          {DURATION_PRESETS.map((p) => (
+            <button key={p.label} type="button" onClick={() => setUnlockDate(getDateFromNow(p.days))}
+              className="text-xs bg-background border border-card-border rounded-lg px-3 py-1.5 hover:border-primary hover:text-primary transition-colors">
+              {p.label}
+            </button>
+          ))}
+        </div>
         <input type="datetime-local" value={unlockDate} onChange={(e) => setUnlockDate(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
-      </div>
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cancelable-tl" checked={cancelable} onChange={(e) => setCancelable(e.target.checked)} className="rounded" />
-        <label htmlFor="cancelable-tl" className="text-sm">Cancelable (creator can cancel and recover unvested tokens)</label>
       </div>
 
       {txError && (
@@ -135,11 +133,11 @@ function TimelockForm() {
       )}
 
       {step === "approve" && !isApproveConfirmed ? (
-        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
-        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !unlockDate} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !unlockDate || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Timelock"}
         </button>
       )}
@@ -159,7 +157,6 @@ function LinearVestingForm() {
   const [startDate, setStartDate] = useState("");
   const [cliffDate, setCliffDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [cancelable, setCancelable] = useState(false);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
   const { writeContract: approve, data: approveTx, isPending: isApproving, error: approveError, reset: resetApprove } = useWriteContract();
@@ -168,22 +165,23 @@ function LinearVestingForm() {
   const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
 
   const txError = approveError || approveReceiptError || createError || createReceiptError;
+  const amountNum = parseFloat(amount);
+  const isAmountInvalid = amount !== "" && (isNaN(amountNum) || amountNum <= 0);
 
   const handleApprove = () => {
-    if (!token || !amount) return;
+    if (!token || !amount || amountNum <= 0) return;
     approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleCreate = () => {
-    if (!token || !beneficiary || !amount || !startDate || !endDate) return;
+    if (!token || !beneficiary || !amount || !startDate || !endDate || amountNum <= 0) return;
     createLock({
       address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "createLinearVesting",
       args: [
         token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals),
         BigInt(dateInputValueToTimestamp(startDate)),
         cliffDate ? BigInt(dateInputValueToTimestamp(cliffDate)) : 0n,
-        BigInt(dateInputValueToTimestamp(endDate)),
-        cancelable,
+        BigInt(dateInputValueToTimestamp(endDate)), false,
       ],
     });
   };
@@ -207,6 +205,7 @@ function LinearVestingForm() {
       <div>
         <label className="block text-sm font-medium mb-1">Amount</label>
         <input type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -224,11 +223,6 @@ function LinearVestingForm() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cancelable-lv" checked={cancelable} onChange={(e) => setCancelable(e.target.checked)} className="rounded" />
-        <label htmlFor="cancelable-lv" className="text-sm">Cancelable</label>
-      </div>
-
       {txError && (
         <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
           <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
@@ -237,11 +231,11 @@ function LinearVestingForm() {
       )}
 
       {step === "approve" && !isApproveConfirmed ? (
-        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
-        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !startDate || !endDate} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || !startDate || !endDate || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Linear Vesting"}
         </button>
       )}
@@ -258,7 +252,6 @@ function SteppedVestingForm() {
   const [decimals, setDecimals] = useState(18);
   const [beneficiary, setBeneficiary] = useState("");
   const [amount, setAmount] = useState("");
-  const [cancelable, setCancelable] = useState(false);
   const [milestones, setMilestones] = useState([{ date: "", percentage: "" }]);
   const [step, setStep] = useState<"approve" | "create">("approve");
 
@@ -268,8 +261,9 @@ function SteppedVestingForm() {
   const { isLoading: isCreateConfirming, isSuccess: isCreateConfirmed, error: createReceiptError } = useWaitForTransactionReceipt({ hash: createTx });
 
   const txError = approveError || approveReceiptError || createError || createReceiptError;
-
   const totalPercentage = milestones.reduce((sum, m) => sum + (parseFloat(m.percentage) || 0), 0);
+  const amountNum = parseFloat(amount);
+  const isAmountInvalid = amount !== "" && (isNaN(amountNum) || amountNum <= 0);
 
   const addMilestone = () => setMilestones([...milestones, { date: "", percentage: "" }]);
   const removeMilestone = (index: number) => setMilestones(milestones.filter((_, i) => i !== index));
@@ -280,19 +274,19 @@ function SteppedVestingForm() {
   };
 
   const handleApprove = () => {
-    if (!token || !amount) return;
+    if (!token || !amount || amountNum <= 0) return;
     approve({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: "approve", args: [MEGALOCK_ADDRESS, parseUnits(amount, decimals)] });
   };
 
   const handleCreate = () => {
-    if (!token || !beneficiary || !amount || totalPercentage !== 100) return;
+    if (!token || !beneficiary || !amount || totalPercentage !== 100 || amountNum <= 0) return;
     const milestonesArgs = milestones.map((m) => ({
       timestamp: BigInt(dateInputValueToTimestamp(m.date)),
       basisPoints: BigInt(Math.round(parseFloat(m.percentage) * 100)),
     }));
     createLock({
       address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "createSteppedVesting",
-      args: [token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals), milestonesArgs, cancelable],
+      args: [token as `0x${string}`, beneficiary as `0x${string}`, parseUnits(amount, decimals), milestonesArgs, false],
     });
   };
 
@@ -315,6 +309,7 @@ function SteppedVestingForm() {
       <div>
         <label className="block text-sm font-medium mb-1">Total Amount</label>
         <input type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        {isAmountInvalid && <p className="text-danger text-xs mt-1">Amount must be greater than 0</p>}
       </div>
 
       <div>
@@ -341,11 +336,6 @@ function SteppedVestingForm() {
         <button onClick={addMilestone} className="mt-2 text-primary hover:text-primary-hover text-sm font-medium">+ Add Milestone</button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="cancelable-sv" checked={cancelable} onChange={(e) => setCancelable(e.target.checked)} className="rounded" />
-        <label htmlFor="cancelable-sv" className="text-sm">Cancelable</label>
-      </div>
-
       {txError && (
         <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-sm">
           <p className="text-danger">{(txError as { shortMessage?: string }).shortMessage || txError.message || "Transaction failed"}</p>
@@ -354,11 +344,11 @@ function SteppedVestingForm() {
       )}
 
       {step === "approve" && !isApproveConfirmed ? (
-        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleApprove} disabled={isApproving || isApproveConfirming || !token || !amount || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isApproving ? "Sign in wallet..." : isApproveConfirming ? "Confirming..." : "Approve Token"}
         </button>
       ) : (
-        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || totalPercentage !== 100} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+        <button onClick={handleCreate} disabled={isCreating || isCreateConfirming || !token || !beneficiary || !amount || totalPercentage !== 100 || isAmountInvalid} className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-4 rounded-lg transition-colors">
           {isCreating ? "Sign in wallet..." : isCreateConfirming ? "Confirming..." : "Create Stepped Vesting"}
         </button>
       )}

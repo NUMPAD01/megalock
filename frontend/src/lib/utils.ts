@@ -62,3 +62,10 @@ export function getVestingProgress(
   if (totalAmount === 0n) return 0;
   return Number((claimedAmount * 10000n) / totalAmount) / 100;
 }
+
+export function getDateFromNow(days: number): string {
+  const date = new Date(Date.now() + days * 86400000);
+  const offset = date.getTimezoneOffset() * 60000;
+  const localDate = new Date(date.getTime() - offset);
+  return localDate.toISOString().slice(0, 16);
+}
