@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useReadContract, usePublicClient } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
-import { shortenAddress, formatTokenAmount } from "@/lib/utils";
+import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
@@ -13,7 +13,7 @@ interface TokenInfo {
   symbol: string;
   decimals: string;
   total_supply: string;
-  holders: string;
+  holders_count: string;
   type: string;
   exchange_rate: string | null;
   icon_url: string | null;
@@ -22,6 +22,17 @@ interface TokenInfo {
 interface HolderInfo {
   address: { hash: string; name: string | null };
   value: string;
+}
+
+interface TokenLockInfo {
+  id: number;
+  lockType: number;
+  totalAmount: bigint;
+  claimedAmount: bigint;
+  startTime: bigint;
+  endTime: bigint;
+  creator: string;
+  beneficiary: string;
 }
 
 
@@ -40,6 +51,7 @@ export default function TokenSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState(0n);
   const [lockCount, setLockCount] = useState(0);
+  const [tokenLocks, setTokenLocks] = useState<TokenLockInfo[]>([]);
 
   const publicClient = usePublicClient();
 
@@ -58,12 +70,14 @@ export default function TokenSearchPage() {
     if (!publicClient || !tokenAddress || !nextLockId || nextLockId === 0n) {
       setLockedAmount(0n);
       setLockCount(0);
+      setTokenLocks([]);
       return;
     }
 
     const scanLocks = async () => {
       let total = 0n;
       let count = 0;
+      const matches: TokenLockInfo[] = [];
       const n = Number(nextLockId);
       for (let i = 0; i < Math.min(n, 100); i++) {
         try {
@@ -71,13 +85,23 @@ export default function TokenSearchPage() {
             address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "getLock", args: [BigInt(i)],
           });
           if (lock.token.toLowerCase() === tokenAddress.toLowerCase() && !lock.cancelled) {
-            total += lock.totalAmount - lock.claimedAmount;
-            count++;
+            const remaining = lock.totalAmount - lock.claimedAmount;
+            if (remaining > 0n) {
+              total += remaining;
+              count++;
+              matches.push({
+                id: i, lockType: lock.lockType,
+                totalAmount: lock.totalAmount, claimedAmount: lock.claimedAmount,
+                startTime: lock.startTime, endTime: lock.endTime,
+                creator: lock.creator, beneficiary: lock.beneficiary,
+              });
+            }
           }
         } catch { /* skip */ }
       }
       setLockedAmount(total);
       setLockCount(count);
+      setTokenLocks(matches);
     };
 
     scanLocks();
@@ -94,6 +118,7 @@ export default function TokenSearchPage() {
     setDevSoldStatus(null);
     setDevTotalReceived(null);
     setDevTotalSold(null);
+    setTokenLocks([]);
 
     try {
       const [tokenRes, holdersRes, addressRes] = await Promise.all([
@@ -148,10 +173,10 @@ export default function TokenSearchPage() {
         setDeployerAddress(deployer);
 
         try {
-          const [balRes, transfersRes, allTokenTxRes] = await Promise.all([
+          const [balRes, transfersRes, txRes] = await Promise.all([
             fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
             fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&contractaddress=${address}&sort=asc&page=1&offset=100`),
-            fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&sort=asc&page=1&offset=200`),
+            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions`),
           ]);
 
           let currentBalance = "0";
@@ -192,20 +217,37 @@ export default function TokenSearchPage() {
             }
           }
 
-          // Count tokens created: unique token contracts where deployer received minted tokens (from 0x0)
-          if (allTokenTxRes.ok) {
-            const allTxData = await allTokenTxRes.json();
-            const allTransfers = allTxData.result || [];
-            const mintedTokens = new Set<string>();
-            for (const t of allTransfers) {
-              if (
-                t.from === "0x0000000000000000000000000000000000000000" &&
-                t.to?.toLowerCase() === deployer.toLowerCase()
-              ) {
-                mintedTokens.add(t.contractAddress?.toLowerCase());
+          // Count contracts created by deployer (direct + factory via internal txs)
+          if (txRes.ok) {
+            const txData = await txRes.json();
+            const txItems = (txData.items || []).slice(0, 20);
+            const createdContracts = new Set<string>();
+
+            // Direct contract creations
+            for (const tx of txItems) {
+              if (tx.created_contract?.hash) {
+                createdContracts.add(tx.created_contract.hash.toLowerCase());
               }
             }
-            setDeployerTokensCreated(mintedTokens.size);
+
+            // Check internal transactions for factory-created contracts
+            const internalResults = await Promise.all(
+              txItems.map((tx: { hash: string }) =>
+                fetch(`${BLOCKSCOUT_API}/transactions/${tx.hash}/internal-transactions`)
+                  .then(r => r.ok ? r.json() : { items: [] })
+                  .catch(() => ({ items: [] }))
+              )
+            );
+
+            for (const result of internalResults) {
+              for (const itx of result.items || []) {
+                if ((itx.type === "create" || itx.type === "create2") && itx.created_contract?.hash) {
+                  createdContracts.add(itx.created_contract.hash.toLowerCase());
+                }
+              }
+            }
+
+            setDeployerTokensCreated(createdContracts.size);
           }
         } catch { /* Non-critical */ }
       }
@@ -265,7 +307,7 @@ export default function TokenSearchPage() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div><p className="text-muted text-xs">Total Supply</p><p className="font-semibold">{formatTokenAmount(totalSupply, decimals)}</p></div>
-              <div><p className="text-muted text-xs">Holders</p><p className="font-semibold">{tokenInfo.holders}</p></div>
+              <div><p className="text-muted text-xs">Holders</p><p className="font-semibold">{tokenInfo.holders_count || "0"}</p></div>
               <div><p className="text-muted text-xs">Decimals</p><p className="font-semibold">{tokenInfo.decimals}</p></div>
               <div><p className="text-muted text-xs">Type</p><p className="font-semibold">{tokenInfo.type}</p></div>
             </div>
@@ -283,8 +325,8 @@ export default function TokenSearchPage() {
                   </div>
                   {deployerTokensCreated !== null && (
                     <div>
-                      <p className="text-muted text-xs">Tokens Created on MegaETH</p>
-                      <p className="font-semibold">{deployerTokensCreated} contract{deployerTokensCreated !== 1 ? "s" : ""} deployed</p>
+                      <p className="text-muted text-xs">Contracts Created on MegaETH</p>
+                      <p className="font-semibold">{deployerTokensCreated} contract{deployerTokensCreated !== 1 ? "s" : ""}</p>
                     </div>
                   )}
                   <div>
@@ -329,13 +371,13 @@ export default function TokenSearchPage() {
               <div className="space-y-3">
                 <div>
                   <p className="text-muted text-xs">Total Locked</p>
-                  <p className="font-semibold text-primary">
+                  <p className={`font-semibold ${lockedAmount > 0n ? "text-success" : "text-muted"}`}>
                     {lockedAmount > 0n ? formatTokenAmount(lockedAmount, decimals) : "0"} {tokenInfo.symbol}
                   </p>
                   {lockedAmount > 0n && totalSupply > 0n && (
                     <p className="text-xs text-muted">{(Number((lockedAmount * 10000n) / totalSupply) / 100).toFixed(2)}% of supply</p>
                   )}
-                  <p className="text-xs text-muted mt-1">{lockCount} active lock{lockCount !== 1 ? "s" : ""} for this token</p>
+                  <p className="text-xs text-muted mt-1">{lockCount} active lock{lockCount !== 1 ? "s" : ""}</p>
                 </div>
                 <div>
                   <p className="text-muted text-xs">Total Burned</p>
@@ -347,6 +389,37 @@ export default function TokenSearchPage() {
                   )}
                 </div>
               </div>
+
+              {tokenLocks.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-card-border space-y-2">
+                  <p className="text-muted text-xs font-medium">Active Locks</p>
+                  {tokenLocks.map((lock) => {
+                    const remaining = lock.totalAmount - lock.claimedAmount;
+                    const vestedPct = lock.totalAmount > 0n ? Number((lock.claimedAmount * 10000n) / lock.totalAmount) / 100 : 0;
+                    return (
+                      <div key={lock.id} className="bg-background rounded-lg p-3 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-muted">#{lock.id}</span>
+                            <span className="bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded">{getLockTypeLabel(lock.lockType)}</span>
+                          </div>
+                          <span className="text-xs font-semibold">{formatTokenAmount(remaining, decimals)} locked</span>
+                        </div>
+                        <div className="flex gap-3 text-[10px] text-muted">
+                          <span>Creator: {shortenAddress(lock.creator)}</span>
+                          <span>Beneficiary: {shortenAddress(lock.beneficiary)}</span>
+                        </div>
+                        <div className="text-[10px] text-muted">
+                          {formatDateTime(Number(lock.startTime))} → {formatDateTime(Number(lock.endTime))}
+                        </div>
+                        <div className="w-full bg-card rounded-full h-1 overflow-hidden">
+                          <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${vestedPct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
