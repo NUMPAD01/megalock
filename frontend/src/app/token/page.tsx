@@ -241,38 +241,34 @@ function TokenSearchContent() {
             }
           }
 
-          // Count contracts created by deployer (direct + factory via internal txs)
+          // Count contracts created by deployer
+          // 1. Direct creations from deployer's transactions
+          // 2. Factory creations via deployer's internal transactions
+          const createdContracts = new Set<string>();
+
           if (txRes.ok) {
             const txData = await txRes.json();
-            const txItems = (txData.items || []).slice(0, 20);
-            const createdContracts = new Set<string>();
-
-            // Direct contract creations
-            for (const tx of txItems) {
+            for (const tx of txData.items || []) {
               if (tx.created_contract?.hash) {
                 createdContracts.add(tx.created_contract.hash.toLowerCase());
               }
             }
+          }
 
-            // Check internal transactions for factory-created contracts
-            const internalResults = await Promise.all(
-              txItems.map((tx: { hash: string }) =>
-                fetch(`${BLOCKSCOUT_API}/transactions/${tx.hash}/internal-transactions`)
-                  .then(r => r.ok ? r.json() : { items: [] })
-                  .catch(() => ({ items: [] }))
-              )
-            );
-
-            for (const result of internalResults) {
-              for (const itx of result.items || []) {
+          // Fetch internal transactions initiated by the deployer (catches factory-deployed contracts)
+          try {
+            const itxRes = await fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/internal-transactions?filter=to%20%7C%20from`);
+            if (itxRes.ok) {
+              const itxData = await itxRes.json();
+              for (const itx of itxData.items || []) {
                 if ((itx.type === "create" || itx.type === "create2") && itx.created_contract?.hash) {
                   createdContracts.add(itx.created_contract.hash.toLowerCase());
                 }
               }
             }
+          } catch { /* Non-critical */ }
 
-            setDeployerTokensCreated(createdContracts.size);
-          }
+          setDeployerTokensCreated(createdContracts.size);
         } catch { /* Non-critical */ }
       }
     } catch (err) {
@@ -334,8 +330,20 @@ function TokenSearchContent() {
           <div className="bg-card border border-card-border rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
               {tokenInfo.icon_url && <img src={tokenInfo.icon_url} alt={tokenInfo.symbol} className="w-10 h-10 rounded-full" />}
-              <div>
-                <h2 className="text-xl font-bold">{tokenInfo.name} <span className="text-muted font-normal">({tokenInfo.symbol})</span></h2>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-bold">{tokenInfo.name} <span className="text-muted font-normal">({tokenInfo.symbol})</span></h2>
+                  <div className="flex items-center gap-1.5">
+                    <a href={`https://dexscreener.com/megaeth/${tokenAddress}`} target="_blank" rel="noopener noreferrer"
+                      title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
+                      <img src="/dexscreener.svg" alt="DexScreener" className="w-6 h-6 rounded-full" />
+                    </a>
+                    <a href={`https://www.kumbaya.xyz/swap?outputCurrency=${tokenAddress}`} target="_blank" rel="noopener noreferrer"
+                      title="Trade on Kumbaya" className="opacity-70 hover:opacity-100 transition-opacity">
+                      <img src="/kumbaya.svg" alt="Kumbaya" className="w-6 h-6 rounded-full" />
+                    </a>
+                  </div>
+                </div>
                 <p className="text-muted text-xs font-mono">{tokenAddress}</p>
               </div>
             </div>
@@ -453,7 +461,6 @@ function TokenSearchContent() {
                         <div className="p-3 space-y-1.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-mono text-muted">#{lock.id}</span>
                               <span className="bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded">{getLockTypeLabel(lock.lockType)}</span>
                               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${now >= endT ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>{timeLabel}</span>
                             </div>
