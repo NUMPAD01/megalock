@@ -33,8 +33,10 @@ interface TokenLockInfo {
   claimedAmount: bigint;
   startTime: bigint;
   endTime: bigint;
+  cliffTime: bigint;
   creator: string;
   beneficiary: string;
+  milestones?: { timestamp: number; basisPoints: number }[];
 }
 
 
@@ -101,11 +103,21 @@ function TokenSearchContent() {
             if (remaining > 0n) {
               total += remaining;
               count++;
+              let ms: { timestamp: number; basisPoints: number }[] | undefined;
+              if (lock.lockType === 2) {
+                try {
+                  const raw = await publicClient.readContract({
+                    address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "getMilestones", args: [BigInt(i)],
+                  });
+                  ms = raw.map(m => ({ timestamp: Number(m.timestamp), basisPoints: Number(m.basisPoints) }));
+                } catch { /* skip */ }
+              }
               matches.push({
                 id: i, lockType: lock.lockType,
                 totalAmount: lock.totalAmount, claimedAmount: lock.claimedAmount,
-                startTime: lock.startTime, endTime: lock.endTime,
+                startTime: lock.startTime, endTime: lock.endTime, cliffTime: lock.cliffTime,
                 creator: lock.creator, beneficiary: lock.beneficiary,
+                milestones: ms,
               });
             }
           }
@@ -460,7 +472,11 @@ function TokenSearchContent() {
                         </div>
                         {isExpanded && (
                           <div className="border-t border-card-border p-3 space-y-3" onClick={(e) => e.stopPropagation()}>
-                            <VestingChart lockType={lock.lockType} startTime={startT} endTime={endT} />
+                            <VestingChart
+                              lockType={lock.lockType} startTime={startT} endTime={endT}
+                              cliffTime={Number(lock.cliffTime)}
+                              milestones={lock.milestones}
+                            />
                             <div className="grid grid-cols-2 gap-2">
                               <div className="bg-card rounded-lg p-2">
                                 <p className="text-muted text-[10px]">Total Locked</p>

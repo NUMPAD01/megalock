@@ -73,6 +73,10 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
     abi: ERC20_ABI, functionName: "totalSupply",
     query: { enabled: !!lock },
   });
+  const { data: milestones } = useReadContract({
+    address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "getMilestones", args: [lockId],
+    query: { enabled: !!lock && lock.lockType === 2 },
+  });
 
   if (!lock) return <div className="bg-card border border-card-border rounded-xl p-4 animate-pulse h-16" />;
 
@@ -152,7 +156,11 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
           {/* Vesting Chart */}
           <div>
             <p className="text-xs text-muted font-medium mb-2">Unlock Schedule</p>
-            <VestingChart lockType={lock.lockType} startTime={startT} endTime={endT} />
+            <VestingChart
+              lockType={lock.lockType} startTime={startT} endTime={endT}
+              cliffTime={Number(lock.cliffTime)}
+              milestones={milestones?.map(m => ({ timestamp: Number(m.timestamp), basisPoints: Number(m.basisPoints) }))}
+            />
           </div>
 
           {/* Detail grid */}
