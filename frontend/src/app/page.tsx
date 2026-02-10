@@ -1,15 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useReadContract } from "wagmi";
-import { MEGALOCK_ADDRESS, MEGALOCK_ABI } from "@/lib/contracts";
+import { useReadContract, usePublicClient } from "wagmi";
+import { parseAbiItem } from "viem";
+import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, ERC20_ABI } from "@/lib/contracts";
+import { shortenAddress, formatTokenAmount, timeAgo } from "@/lib/utils";
+import { useWatchlist } from "@/hooks/useWatchlist";
 import { FadeIn } from "@/components/FadeIn";
+
+interface ActivityEvent {
+  type: "lock" | "burn";
+  token: string;
+  tokenSymbol: string;
+  actor: string;
+  amount: bigint;
+  decimals: number;
+  timestamp: number;
+}
 
 export default function Dashboard() {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
+  const { watchlist, removeToken } = useWatchlist();
+  const publicClient = usePublicClient();
+  const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
 
   const { data: nextLockId } = useReadContract({
     address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "nextLockId",
@@ -23,6 +40,103 @@ export default function Dashboard() {
       router.push(`/token/${addr}`);
     }
   };
+
+  useEffect(() => {
+    if (!publicClient) return;
+
+    const fetchActivity = async () => {
+      setActivitiesLoading(true);
+      try {
+        const [lockLogs, burnLogs] = await Promise.all([
+          publicClient.getLogs({
+            address: MEGALOCK_ADDRESS,
+            event: parseAbiItem(
+              "event LockCreated(uint256 indexed lockId, address indexed token, address indexed beneficiary, address creator, uint256 amount, uint8 lockType)"
+            ),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: MEGABURN_ADDRESS,
+            event: parseAbiItem(
+              "event TokensBurned(address indexed token, address indexed burner, uint256 amount)"
+            ),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+        ]);
+
+        const symbolCache = new Map<string, { symbol: string; decimals: number }>();
+        const resolveToken = async (addr: string) => {
+          if (symbolCache.has(addr.toLowerCase())) return symbolCache.get(addr.toLowerCase())!;
+          try {
+            const [symbol, decimals] = await Promise.all([
+              publicClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }),
+              publicClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "decimals" }),
+            ]);
+            const entry = { symbol: symbol as string, decimals: Number(decimals) };
+            symbolCache.set(addr.toLowerCase(), entry);
+            return entry;
+          } catch {
+            return { symbol: "???", decimals: 18 };
+          }
+        };
+
+        const allLogs = [
+          ...lockLogs.slice(-20).map((l) => ({ ...l, _type: "lock" as const })),
+          ...burnLogs.slice(-20).map((l) => ({ ...l, _type: "burn" as const })),
+        ];
+        allLogs.sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)));
+        const recentLogs = allLogs.slice(0, 20);
+
+        const blockCache = new Map<bigint, number>();
+        const events: ActivityEvent[] = [];
+
+        for (const log of recentLogs) {
+          const blockNum = log.blockNumber ?? 0n;
+          let timestamp = blockCache.get(blockNum);
+          if (timestamp === undefined) {
+            try {
+              const block = await publicClient.getBlock({ blockNumber: blockNum });
+              timestamp = Number(block.timestamp);
+              blockCache.set(blockNum, timestamp);
+            } catch {
+              timestamp = Math.floor(Date.now() / 1000);
+            }
+          }
+
+          if (log._type === "lock") {
+            const token = log.args.token as string;
+            const info = await resolveToken(token);
+            events.push({
+              type: "lock", token, tokenSymbol: info.symbol,
+              actor: (log.args.creator as string) || "",
+              amount: log.args.amount as bigint,
+              decimals: info.decimals, timestamp,
+            });
+          } else {
+            const token = log.args.token as string;
+            const info = await resolveToken(token);
+            events.push({
+              type: "burn", token, tokenSymbol: info.symbol,
+              actor: (log.args.burner as string) || "",
+              amount: log.args.amount as bigint,
+              decimals: info.decimals, timestamp,
+            });
+          }
+        }
+
+        events.sort((a, b) => b.timestamp - a.timestamp);
+        setActivities(events);
+      } catch {
+        setActivities([]);
+      } finally {
+        setActivitiesLoading(false);
+      }
+    };
+
+    fetchActivity();
+  }, [publicClient]);
 
   return (
     <div className="space-y-16 pb-12">
@@ -74,6 +188,38 @@ export default function Dashboard() {
           </div>
         </FadeIn>
       </section>
+
+      {/* Watchlist */}
+      {watchlist.length > 0 && (
+        <section>
+          <FadeIn>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-4">Watchlist</p>
+          </FadeIn>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {watchlist.map((token, i) => (
+              <FadeIn key={token.address} delay={i * 50}>
+                <div className="bg-card border border-card-border rounded-xl p-4 card-glow card-texture group relative">
+                  <button
+                    onClick={() => removeToken(token.address)}
+                    className="absolute top-3 right-3 text-muted hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove from watchlist"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <Link href={`/token/${token.address}`} className="block">
+                    <h4 className="font-semibold group-hover:text-primary transition-colors">
+                      {token.name} <span className="text-muted font-normal">({token.symbol})</span>
+                    </h4>
+                    <p className="text-muted text-xs font-mono mt-1">{shortenAddress(token.address)}</p>
+                  </Link>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Tools grid */}
       <section>
@@ -146,6 +292,59 @@ export default function Dashboard() {
             </Link>
           </FadeIn>
         </div>
+      </section>
+
+      {/* Recent Activity */}
+      <section>
+        <FadeIn>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-4">Recent Activity</p>
+        </FadeIn>
+
+        {activitiesLoading ? (
+          <FadeIn delay={50}>
+            <div className="bg-card border border-card-border rounded-xl p-6 animate-pulse h-48" />
+          </FadeIn>
+        ) : activities.length === 0 ? (
+          <FadeIn delay={50}>
+            <div className="bg-card border border-card-border rounded-xl p-6 text-center">
+              <p className="text-muted text-sm">No recent activity</p>
+            </div>
+          </FadeIn>
+        ) : (
+          <FadeIn delay={50}>
+            <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+              <div className="divide-y divide-card-border">
+                {activities.map((event, i) => (
+                  <div key={`${event.type}-${event.token}-${i}`}
+                    className="px-4 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      event.type === "lock" ? "bg-primary/10" : "bg-danger/10"
+                    }`}>
+                      {event.type === "lock" ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
+                          <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger">
+                          <path d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">
+                        <span className="text-muted">{shortenAddress(event.actor)}</span>
+                        <span className="text-muted mx-1">{event.type === "lock" ? "locked" : "burned"}</span>
+                        <span className="font-semibold">{formatTokenAmount(event.amount, event.decimals)}</span>
+                        <Link href={`/token/${event.token}`} className="text-primary hover:underline ml-1">{event.tokenSymbol}</Link>
+                      </p>
+                    </div>
+                    <span className="text-muted text-xs shrink-0">{timeAgo(event.timestamp)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </FadeIn>
+        )}
       </section>
 
       {/* About */}

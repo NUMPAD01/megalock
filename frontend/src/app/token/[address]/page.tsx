@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createPublicClient, http } from "viem";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
+import { rpcClient } from "@/lib/rpcClient";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { generateLockCertificate } from "@/lib/generateLockCertificate";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
-import { megaeth } from "@/config/chains";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
-
-const rpcClient = createPublicClient({
-  chain: megaeth,
-  transport: http(),
-});
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
 
 interface TokenInfo {
@@ -48,12 +44,50 @@ interface TokenLockInfo {
   milestones?: { timestamp: number; basisPoints: number }[];
 }
 
+function computeSafetyScore(params: {
+  lockedAmount: bigint;
+  totalBurned: bigint | undefined;
+  totalSupply: bigint;
+  devSoldStatus: "sold" | "holding" | "never_held" | null;
+  holdersCount: number;
+  isContractVerified: boolean | null;
+  deployerTxCount: number | null;
+}): { total: number; breakdown: { label: string; score: number; max: number }[] } {
+  const { lockedAmount, totalBurned, totalSupply, devSoldStatus, holdersCount, isContractVerified, deployerTxCount } = params;
+
+  const lockedPct = totalSupply > 0n ? Number((lockedAmount * 10000n) / totalSupply) / 100 : 0;
+  const burnedPct = totalSupply > 0n && totalBurned ? Number((totalBurned * 10000n) / totalSupply) / 100 : 0;
+
+  const lockScore = Math.min(25, (lockedPct / 50) * 25);
+  const burnScore = Math.min(15, (burnedPct / 10) * 15);
+
+  let devScore = 0;
+  if (devSoldStatus === "holding") devScore = 25;
+  else if (devSoldStatus === "never_held") devScore = 10;
+
+  const holderScore = Math.min(15, (holdersCount / 100) * 15);
+  const verifiedScore = isContractVerified ? 10 : 0;
+  const txScore = deployerTxCount !== null ? Math.min(10, (deployerTxCount / 50) * 10) : 0;
+
+  const breakdown = [
+    { label: "Liquidity Locked", score: Math.round(lockScore), max: 25 },
+    { label: "Supply Burned", score: Math.round(burnScore), max: 15 },
+    { label: "Dev Status", score: devScore, max: 25 },
+    { label: "Holders", score: Math.round(holderScore), max: 15 },
+    { label: "Contract Verified", score: verifiedScore, max: 10 },
+    { label: "Deployer Activity", score: Math.round(txScore), max: 10 },
+  ];
+
+  return { total: breakdown.reduce((sum, b) => sum + b.score, 0), breakdown };
+}
+
 export default function TokenDetailPage() {
   const params = useParams();
   const router = useRouter();
   const tokenAddress = params.address as string;
 
   const { address: myAddress } = useAccount();
+  const { addToken, removeToken, isWatched } = useWatchlist();
   const [searchInput, setSearchInput] = useState(tokenAddress || "");
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [holders, setHolders] = useState<HolderInfo[]>([]);
@@ -69,8 +103,17 @@ export default function TokenDetailPage() {
   const [lockCount, setLockCount] = useState(0);
   const [tokenLocks, setTokenLocks] = useState<TokenLockInfo[]>([]);
   const [expandedLockId, setExpandedLockId] = useState<number | null>(null);
+  const [isContractVerified, setIsContractVerified] = useState<boolean | null>(null);
+  const [copiedLockId, setCopiedLockId] = useState<number | null>(null);
 
   const publicClient = usePublicClient();
+  const watched = tokenInfo ? isWatched(tokenAddress) : false;
+
+  const toggleWatchlist = () => {
+    if (!tokenInfo) return;
+    if (watched) removeToken(tokenAddress);
+    else addToken({ address: tokenAddress, name: tokenInfo.name, symbol: tokenInfo.symbol });
+  };
 
   const { data: totalBurned } = useReadContract({
     address: MEGABURN_ADDRESS, abi: MEGABURN_ABI, functionName: "totalBurned",
@@ -146,6 +189,7 @@ export default function TokenDetailPage() {
     setDevTotalReceived(null);
     setDevTotalSold(null);
     setTokenLocks([]);
+    setIsContractVerified(null);
 
     try {
       const [tokenRes, holdersRes, addressRes] = await Promise.all([
@@ -159,7 +203,6 @@ export default function TokenDetailPage() {
       if (tokenRes.ok) {
         tokenData = await tokenRes.json();
       } else {
-        // Blockscout doesn't have this token indexed — fallback to RPC
         const erc20 = [
           { type: "function", name: "name", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
           { type: "function", name: "symbol", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
@@ -175,22 +218,14 @@ export default function TokenDetailPage() {
             rpcClient.readContract({ address: addr, abi: erc20, functionName: "totalSupply" }),
           ]);
           tokenData = {
-            name: name as string,
-            symbol: symbol as string,
-            decimals: String(decimals),
-            total_supply: String(totalSupply),
-            holders_count: "0",
-            type: "ERC-20",
-            exchange_rate: null,
-            icon_url: null,
+            name: name as string, symbol: symbol as string,
+            decimals: String(decimals), total_supply: String(totalSupply),
+            holders_count: "0", type: "ERC-20", exchange_rate: null, icon_url: null,
           };
         } catch {
-          // Check if it's a contract (e.g. LP pair) but not an ERC20 token
           if (addressRes.ok) {
             const addrData = await addressRes.json();
-            if (addrData.is_contract) {
-              throw new Error("This address is a contract (e.g. LP pair) but not an ERC20 token");
-            }
+            if (addrData.is_contract) throw new Error("This address is a contract (e.g. LP pair) but not an ERC20 token");
           }
           throw new Error("Token not found on MegaETH");
         }
@@ -208,6 +243,7 @@ export default function TokenDetailPage() {
       if (addressRes.ok) {
         const addressData = await addressRes.json();
         deployer = addressData.creator_address_hash;
+        setIsContractVerified(!!addressData.is_verified);
       }
 
       if (!deployer) {
@@ -284,7 +320,6 @@ export default function TokenDetailPage() {
     }
   }, []);
 
-  // Auto-fetch on mount
   useEffect(() => {
     if (tokenAddress && tokenAddress.length === 42 && tokenAddress.startsWith("0x")) {
       fetchTokenData(tokenAddress);
@@ -305,6 +340,54 @@ export default function TokenDetailPage() {
 
   const decimals = tokenInfo ? parseInt(tokenInfo.decimals) : 18;
   const totalSupply = tokenInfo ? BigInt(tokenInfo.total_supply) : 0n;
+
+  const safetyScore = useMemo(() => {
+    if (!tokenInfo || loading) return null;
+    return computeSafetyScore({
+      lockedAmount,
+      totalBurned,
+      totalSupply,
+      devSoldStatus,
+      holdersCount: parseInt(tokenInfo.holders_count) || 0,
+      isContractVerified,
+      deployerTxCount,
+    });
+  }, [tokenInfo, loading, lockedAmount, totalBurned, totalSupply, devSoldStatus, isContractVerified, deployerTxCount]);
+
+  const handleShareCertificate = async (lock: TokenLockInfo) => {
+    if (!tokenInfo) return;
+    const remaining = lock.totalAmount - lock.claimedAmount;
+    const blob = await generateLockCertificate({
+      tokenName: tokenInfo.name, tokenSymbol: tokenInfo.symbol, tokenAddress,
+      lockedAmount: remaining, totalSupply, decimals, lockType: lock.lockType,
+      startTime: Number(lock.startTime), endTime: Number(lock.endTime),
+      creator: lock.creator, beneficiary: lock.beneficiary, lockId: lock.id,
+    });
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setCopiedLockId(lock.id);
+    } catch {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `megascan-lock-${lock.id}-${tokenInfo.symbol}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setCopiedLockId(lock.id);
+    }
+    setTimeout(() => setCopiedLockId(null), 2000);
+  };
+
+  const handleCopyForTwitter = (lock: TokenLockInfo) => {
+    if (!tokenInfo) return;
+    const remaining = lock.totalAmount - lock.claimedAmount;
+    const pct = totalSupply > 0n ? (Number((remaining * 10000n) / totalSupply) / 100).toFixed(2) : "?";
+    const endT = Number(lock.endTime);
+    const text = `${tokenInfo.name} ($${tokenInfo.symbol}) has ${formatTokenAmount(remaining, decimals)} tokens locked (${pct}% of supply) via @megascanapp\n\nLock type: ${getLockTypeLabel(lock.lockType)}\nUnlocks: ${formatDateTime(endT)}\n\nVerify: megascan.app/token/${tokenAddress}`;
+    navigator.clipboard.writeText(text);
+    setCopiedLockId(lock.id);
+    setTimeout(() => setCopiedLockId(null), 2000);
+  };
 
   return (
     <div className="space-y-6">
@@ -346,6 +429,7 @@ export default function TokenDetailPage() {
 
       {tokenInfo && (
         <>
+          {/* Token Info Card */}
           <FadeIn delay={100}>
             <div className="bg-card border border-card-border rounded-xl p-6">
               <div className="flex items-center gap-3 mb-4">
@@ -359,6 +443,14 @@ export default function TokenDetailPage() {
                       title="View on DexScreener" className="opacity-70 hover:opacity-100 transition-opacity">
                       <img src="/dexscreener.png" alt="DexScreener" className="w-5 h-5 rounded-sm" />
                     </a>
+                    <button onClick={toggleWatchlist} title={watched ? "Remove from watchlist" : "Add to watchlist"}
+                      className="text-muted hover:text-primary transition-colors ml-1">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill={watched ? "currentColor" : "none"}
+                        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        className={watched ? "text-primary" : ""}>
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    </button>
                   </div>
                   <a href={`https://megaeth.blockscout.com/address/${tokenAddress}`} target="_blank" rel="noopener noreferrer" className="text-muted text-xs font-mono hover:text-primary transition-colors">{tokenAddress}</a>
                 </div>
@@ -372,6 +464,52 @@ export default function TokenDetailPage() {
             </div>
           </FadeIn>
 
+          {/* Safety Score */}
+          {safetyScore && (
+            <FadeIn delay={150}>
+              <div className="bg-card border border-card-border rounded-xl p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold border-4 ${
+                    safetyScore.total >= 61 ? "border-success text-success" :
+                    safetyScore.total >= 31 ? "border-[#f59e0b] text-[#f59e0b]" :
+                    "border-danger text-danger"
+                  }`}>
+                    {safetyScore.total}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Safety Score</h3>
+                    <p className={`text-sm font-medium ${
+                      safetyScore.total >= 61 ? "text-success" :
+                      safetyScore.total >= 31 ? "text-[#f59e0b]" :
+                      "text-danger"
+                    }`}>
+                      {safetyScore.total >= 61 ? "Good" : safetyScore.total >= 31 ? "Moderate" : "Low"}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {safetyScore.breakdown.map((item) => (
+                    <div key={item.label} className="flex items-center gap-3">
+                      <span className="text-muted text-xs w-36">{item.label}</span>
+                      <div className="flex-1 bg-background rounded-full h-2 overflow-hidden">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            item.score / item.max >= 0.6 ? "bg-success" :
+                            item.score / item.max >= 0.3 ? "bg-[#f59e0b]" :
+                            "bg-danger"
+                          }`}
+                          style={{ width: `${(item.score / item.max) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-12 text-right">{item.score}/{item.max}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeIn>
+          )}
+
+          {/* Dev / Lock & Burn */}
           <FadeIn delay={200}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-card border border-card-border rounded-xl p-6">
@@ -507,6 +645,22 @@ export default function TokenDetailPage() {
                               <div className="text-[10px] text-muted">
                                 {formatDateTime(startT)} → {formatDateTime(endT)}
                               </div>
+                              <div className="flex items-center gap-3 pt-1">
+                                <button onClick={() => handleShareCertificate(lock)}
+                                  className="text-xs text-primary hover:text-primary-hover transition-colors flex items-center gap-1">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+                                  </svg>
+                                  {copiedLockId === lock.id ? "Copied!" : "Share Certificate"}
+                                </button>
+                                <button onClick={() => handleCopyForTwitter(lock)}
+                                  className="text-xs text-muted hover:text-primary transition-colors flex items-center gap-1">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                                  </svg>
+                                  Copy for Twitter
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -518,6 +672,7 @@ export default function TokenDetailPage() {
             </div>
           </FadeIn>
 
+          {/* Top Holders */}
           {holders.length > 0 && (
             <FadeIn delay={300}>
               <div className="bg-card border border-card-border rounded-xl p-6">
