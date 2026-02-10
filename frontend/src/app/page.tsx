@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useReadContract, usePublicClient } from "wagmi";
@@ -44,31 +44,49 @@ export default function Dashboard() {
   });
 
   const totalLocks = nextLockId !== undefined ? Number(nextLockId) : null;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = async () => {
+  // Auto-search as user types (debounced 400ms)
+  useEffect(() => {
+    const query = searchInput.trim();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // Clear results if input too short or is an address
+    if (query.length < 2 || (query.length === 42 && query.startsWith("0x"))) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://megaeth.blockscout.com/api/v2/search?q=${encodeURIComponent(query)}`
+        );
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const tokens = (data.items || []).filter(
+          (item: SearchResult) => item.type === "token" && item.token_type === "ERC-20"
+        );
+        setSearchResults(tokens);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
+
+  const handleSubmit = () => {
     const query = searchInput.trim();
     if (!query) return;
     if (query.length === 42 && query.startsWith("0x")) {
       router.push(`/token/${query}`);
-      return;
-    }
-    if (query.length < 2) return;
-    setSearching(true);
-    setSearchResults([]);
-    try {
-      const res = await fetch(
-        `https://megaeth.blockscout.com/api/v2/search?q=${encodeURIComponent(query)}`
-      );
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const tokens = (data.items || []).filter(
-        (item: SearchResult) => item.type === "token" && item.token_type === "ERC-20"
-      );
-      setSearchResults(tokens);
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
+    } else if (searchResults.length > 0) {
+      router.push(`/token/${searchResults[0].address}`);
     }
   };
 
@@ -190,12 +208,12 @@ export default function Dashboard() {
               <input
                 type="text" placeholder="Search by name, symbol, or address (0x...)"
                 value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                 className="flex-1 bg-card border border-card-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
               />
-              <button onClick={handleSearch} disabled={searching}
-                className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-black font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm">
-                {searching ? "..." : "Scan"}
+              <button onClick={handleSubmit}
+                className="bg-primary hover:bg-primary-hover text-black font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm">
+                Scan
               </button>
             </div>
 
