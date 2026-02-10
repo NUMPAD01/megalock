@@ -24,7 +24,7 @@ interface SearchResult {
   type: string;
   name: string;
   symbol: string;
-  address: string;
+  address_hash: string;
   icon_url: string | null;
   token_type: string;
 }
@@ -86,7 +86,7 @@ export default function Dashboard() {
     if (query.length === 42 && query.startsWith("0x")) {
       router.push(`/token/${query}`);
     } else if (searchResults.length > 0) {
-      router.push(`/token/${searchResults[0].address}`);
+      router.push(`/token/${searchResults[0].address_hash}`);
     }
   };
 
@@ -225,8 +225,8 @@ export default function Dashboard() {
               <div className="mt-2 bg-card border border-card-border rounded-xl overflow-hidden">
                 {searchResults.slice(0, 5).map((result) => (
                   <Link
-                    key={result.address}
-                    href={`/token/${result.address}`}
+                    key={result.address_hash}
+                    href={`/token/${result.address_hash}`}
                     className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.04] border-b border-card-border/50 last:border-b-0 transition-colors"
                   >
                     {result.icon_url ? (
@@ -240,7 +240,7 @@ export default function Dashboard() {
                       <span className="text-sm font-medium">{result.name}</span>
                       <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
                     </div>
-                    <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address)}</span>
+                    <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
                   </Link>
                 ))}
               </div>

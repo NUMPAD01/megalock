@@ -10,7 +10,7 @@ interface SearchResult {
   type: string;
   name: string;
   symbol: string;
-  address: string;
+  address_hash: string;
   icon_url: string | null;
   token_type: string;
 }
@@ -114,8 +114,8 @@ function TokenSearchContent() {
             </p>
             {searchResults.map((result) => (
               <Link
-                key={result.address}
-                href={`/token/${result.address}`}
+                key={result.address_hash}
+                href={`/token/${result.address_hash}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] border-b border-card-border/50 transition-colors"
               >
                 {result.icon_url ? (
@@ -129,7 +129,7 @@ function TokenSearchContent() {
                   <span className="font-medium">{result.name}</span>
                   <span className="text-muted text-sm ml-2">({result.symbol})</span>
                 </div>
-                <span className="text-muted text-xs font-mono">{shortenAddress(result.address)}</span>
+                <span className="text-muted text-xs font-mono">{shortenAddress(result.address_hash)}</span>
               </Link>
             ))}
           </div>
