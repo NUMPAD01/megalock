@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [searchInput, setSearchInput] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchMcap, setSearchMcap] = useState<Record<string, string>>({});
   const { watchlist, removeToken } = useWatchlist();
   const publicClient = usePublicClient();
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
@@ -124,6 +125,29 @@ export default function Dashboard() {
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);
+
+  // Fetch mcap from DexScreener for search results
+  useEffect(() => {
+    if (searchResults.length === 0) { setSearchMcap({}); return; }
+    const fetchMcaps = async () => {
+      const map: Record<string, string> = {};
+      await Promise.all(
+        searchResults.map(async (result) => {
+          if (result.circulating_market_cap) { map[result.address_hash] = result.circulating_market_cap; return; }
+          try {
+            const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${result.address_hash}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const pair = data.pairs?.[0];
+            if (pair?.marketCap) map[result.address_hash] = String(pair.marketCap);
+            else if (pair?.fdv) map[result.address_hash] = String(pair.fdv);
+          } catch { /* skip */ }
+        })
+      );
+      setSearchMcap(map);
+    };
+    fetchMcaps();
+  }, [searchResults]);
 
   const handleSubmit = () => {
     const query = searchInput.trim();
@@ -286,8 +310,8 @@ export default function Dashboard() {
                       <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
                     </div>
                     <div className="text-right shrink-0">
-                      {result.circulating_market_cap ? (
-                        <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap)}</span>
+                      {(result.circulating_market_cap || searchMcap[result.address_hash]) ? (
+                        <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap || searchMcap[result.address_hash])}</span>
                       ) : (
                         <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
                       )}

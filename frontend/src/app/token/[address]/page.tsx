@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
@@ -46,61 +46,6 @@ interface TokenLockInfo {
   milestones?: { timestamp: number; basisPoints: number }[];
 }
 
-function computeSafetyScore(params: {
-  lockedAmount: bigint;
-  totalBurned: bigint | undefined;
-  totalSupply: bigint;
-  devBalancePct: number;
-  devSoldStatus: "sold" | "holding" | "never_held" | null;
-  holdersCount: number;
-  isContractVerified: boolean | null;
-  deployerTxCount: number | null;
-}): { total: number; breakdown: { label: string; score: number; max: number }[] } {
-  const { lockedAmount, totalBurned, totalSupply, devBalancePct, devSoldStatus, holdersCount, isContractVerified, deployerTxCount } = params;
-
-  const lockedPct = totalSupply > 0n ? Number((lockedAmount * 10000n) / totalSupply) / 100 : 0;
-  const burnedPct = totalSupply > 0n && totalBurned ? Number((totalBurned * 10000n) / totalSupply) / 100 : 0;
-
-  // Liquidity locked: more locked = better (cap 50%)
-  const lockScore = Math.min(25, (lockedPct / 50) * 25);
-  // Supply burned: more burned = better (cap 10%)
-  const burnScore = Math.min(15, (burnedPct / 10) * 15);
-
-  // Dev wallet: less supply held by dev = better
-  // 0% held = 25pts, 5% = 20pts, 20% = 12pts, 50% = 5pts, 90%+ = 0pts
-  let devScore = 0;
-  if (devSoldStatus === "sold") {
-    devScore = 0; // dev dumped everything = bad
-  } else if (devBalancePct <= 1) {
-    devScore = 25; // <1% = very safe
-  } else if (devBalancePct <= 5) {
-    devScore = 20;
-  } else if (devBalancePct <= 10) {
-    devScore = 15;
-  } else if (devBalancePct <= 20) {
-    devScore = 10;
-  } else if (devBalancePct <= 50) {
-    devScore = 5;
-  } else {
-    devScore = 0; // >50% = dangerous
-  }
-
-  const holderScore = Math.min(15, (holdersCount / 100) * 15);
-  const verifiedScore = isContractVerified ? 10 : 0;
-  const txScore = deployerTxCount !== null ? Math.min(10, (deployerTxCount / 50) * 10) : 0;
-
-  const breakdown = [
-    { label: "Liquidity Locked", score: Math.round(lockScore), max: 25 },
-    { label: "Supply Burned", score: Math.round(burnScore), max: 15 },
-    { label: "Dev Wallet", score: devScore, max: 25 },
-    { label: "Holders", score: Math.round(holderScore), max: 15 },
-    { label: "Contract Verified", score: verifiedScore, max: 10 },
-    { label: "Deployer Activity", score: Math.round(txScore), max: 10 },
-  ];
-
-  return { total: breakdown.reduce((sum, b) => sum + b.score, 0), breakdown };
-}
-
 export default function TokenDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -129,6 +74,7 @@ export default function TokenDetailPage() {
   const [searchingDropdown, setSearchingDropdown] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dexData, setDexData] = useState<{priceUsd: string | null; mcap: number | null; volume24h: number | null} | null>(null);
+  const [dropdownMcap, setDropdownMcap] = useState<Record<string, string>>({});
 
   const publicClient = usePublicClient();
   const watched = tokenInfo ? isWatched(tokenAddress) : false;
@@ -366,23 +312,6 @@ export default function TokenDetailPage() {
   const decimals = tokenInfo ? parseInt(tokenInfo.decimals) : 18;
   const totalSupply = tokenInfo ? BigInt(tokenInfo.total_supply) : 0n;
 
-  const safetyScore = useMemo(() => {
-    if (!tokenInfo || loading) return null;
-    const devBalancePct = (deployerBalance && totalSupply > 0n)
-      ? Number((BigInt(deployerBalance) * 10000n) / totalSupply) / 100
-      : 0;
-    return computeSafetyScore({
-      lockedAmount,
-      totalBurned,
-      totalSupply,
-      devBalancePct,
-      devSoldStatus,
-      holdersCount: parseInt(tokenInfo.holders_count) || 0,
-      isContractVerified,
-      deployerTxCount,
-    });
-  }, [tokenInfo, loading, lockedAmount, totalBurned, totalSupply, deployerBalance, devSoldStatus, isContractVerified, deployerTxCount]);
-
   // Sync search input when navigating between tokens
   useEffect(() => {
     setSearchInput(tokenAddress || "");
@@ -436,6 +365,29 @@ export default function TokenDetailPage() {
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
   }, [searchInput]);
 
+  // Fetch mcap from DexScreener for search dropdown results
+  useEffect(() => {
+    if (searchDropdown.length === 0) { setDropdownMcap({}); return; }
+    const fetchMcaps = async () => {
+      const map: Record<string, string> = {};
+      await Promise.all(
+        searchDropdown.map(async (result) => {
+          if (result.circulating_market_cap) { map[result.address_hash] = result.circulating_market_cap; return; }
+          try {
+            const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${result.address_hash}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const pair = data.pairs?.[0];
+            if (pair?.marketCap) map[result.address_hash] = String(pair.marketCap);
+            else if (pair?.fdv) map[result.address_hash] = String(pair.fdv);
+          } catch { /* skip */ }
+        })
+      );
+      setDropdownMcap(map);
+    };
+    fetchMcaps();
+  }, [searchDropdown]);
+
   const handleShareCertificate = async (lock: TokenLockInfo) => {
     if (!tokenInfo) return;
     const remaining = lock.totalAmount - lock.claimedAmount;
@@ -481,7 +433,7 @@ export default function TokenDetailPage() {
       </FadeIn>
 
       <FadeIn delay={50}>
-        <div className="relative">
+        <div className="relative z-20">
           <div className="flex gap-2">
             <input
               type="text" placeholder="Search by name, symbol, or address (0x...)"
@@ -518,8 +470,8 @@ export default function TokenDetailPage() {
                     <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
                   </div>
                   <div className="text-right shrink-0">
-                    {result.circulating_market_cap ? (
-                      <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap)}</span>
+                    {(result.circulating_market_cap || dropdownMcap[result.address_hash]) ? (
+                      <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap || dropdownMcap[result.address_hash])}</span>
                     ) : (
                       <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
                     )}
@@ -583,51 +535,6 @@ export default function TokenDetailPage() {
               </div>
             </div>
           </FadeIn>
-
-          {/* Safety Score */}
-          {safetyScore && (
-            <FadeIn delay={150}>
-              <div className="bg-card border border-card-border rounded-xl p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold border-4 ${
-                    safetyScore.total >= 61 ? "border-success text-success" :
-                    safetyScore.total >= 31 ? "border-[#f59e0b] text-[#f59e0b]" :
-                    "border-danger text-danger"
-                  }`}>
-                    {safetyScore.total}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Safety Score</h3>
-                    <p className={`text-sm font-medium ${
-                      safetyScore.total >= 61 ? "text-success" :
-                      safetyScore.total >= 31 ? "text-[#f59e0b]" :
-                      "text-danger"
-                    }`}>
-                      {safetyScore.total >= 61 ? "Good" : safetyScore.total >= 31 ? "Moderate" : "Low"}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {safetyScore.breakdown.map((item) => (
-                    <div key={item.label} className="flex items-center gap-3">
-                      <span className="text-muted text-xs w-36">{item.label}</span>
-                      <div className="flex-1 bg-background rounded-full h-2 overflow-hidden">
-                        <div
-                          className={`h-2 rounded-full transition-all ${
-                            item.score / item.max >= 0.6 ? "bg-success" :
-                            item.score / item.max >= 0.3 ? "bg-[#f59e0b]" :
-                            "bg-danger"
-                          }`}
-                          style={{ width: `${(item.score / item.max) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium w-12 text-right">{item.score}/{item.max}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </FadeIn>
-          )}
 
           {/* Dev / Lock & Burn */}
           <FadeIn delay={200}>
