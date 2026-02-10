@@ -147,9 +147,42 @@ export default function TokenDetailPage() {
         fetch(`${BLOCKSCOUT_API}/addresses/${address}`),
       ]);
 
-      if (!tokenRes.ok) throw new Error("Token not found on MegaETH");
+      let tokenData: TokenInfo;
 
-      const tokenData = await tokenRes.json();
+      if (tokenRes.ok) {
+        tokenData = await tokenRes.json();
+      } else {
+        // Blockscout doesn't have this token indexed — fallback to RPC
+        if (!publicClient) throw new Error("Token not found on MegaETH");
+        const erc20 = [
+          { type: "function", name: "name", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
+          { type: "function", name: "symbol", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
+          { type: "function", name: "decimals", inputs: [], outputs: [{ type: "uint8" }], stateMutability: "view" },
+          { type: "function", name: "totalSupply", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+        ] as const;
+        const addr = address as `0x${string}`;
+        try {
+          const [name, symbol, decimals, totalSupply] = await Promise.all([
+            publicClient.readContract({ address: addr, abi: erc20, functionName: "name" }),
+            publicClient.readContract({ address: addr, abi: erc20, functionName: "symbol" }),
+            publicClient.readContract({ address: addr, abi: erc20, functionName: "decimals" }),
+            publicClient.readContract({ address: addr, abi: erc20, functionName: "totalSupply" }),
+          ]);
+          tokenData = {
+            name: name as string,
+            symbol: symbol as string,
+            decimals: String(decimals),
+            total_supply: String(totalSupply),
+            holders_count: "0",
+            type: "ERC-20",
+            exchange_rate: null,
+            icon_url: null,
+          };
+        } catch {
+          throw new Error("Token not found on MegaETH");
+        }
+      }
+
       setTokenInfo(tokenData);
 
       if (holdersRes.ok) {
@@ -236,7 +269,7 @@ export default function TokenDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [publicClient]);
 
   // Auto-fetch on mount
   useEffect(() => {
