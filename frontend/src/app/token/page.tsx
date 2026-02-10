@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FadeIn } from "@/components/FadeIn";
 import { shortenAddress } from "@/lib/utils";
@@ -15,15 +15,16 @@ interface SearchResult {
   token_type: string;
 }
 
-export default function TokenSearchPage() {
+function TokenSearchContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const handleSearch = async () => {
-    const query = searchInput.trim();
+  const handleSearch = useCallback(async (override?: string) => {
+    const query = (override ?? searchInput).trim();
     setError(null);
     setSearchResults([]);
 
@@ -58,7 +59,16 @@ export default function TokenSearchPage() {
     } finally {
       setSearching(false);
     }
-  };
+  }, [searchInput, router]);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) {
+      setSearchInput(q);
+      handleSearch(q);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   return (
     <div className="space-y-6">
@@ -77,7 +87,7 @@ export default function TokenSearchPage() {
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             className="flex-1 bg-card border border-card-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary"
           />
-          <button onClick={handleSearch} disabled={searching}
+          <button onClick={() => handleSearch()} disabled={searching}
             className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-6 rounded-lg transition-colors">
             {searching ? "Searching..." : "Search"}
           </button>
@@ -140,5 +150,18 @@ export default function TokenSearchPage() {
         </FadeIn>
       )}
     </div>
+  );
+}
+
+export default function TokenSearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div><h1 className="text-3xl font-bold">Token Search</h1></div>
+        <div className="bg-card border border-card-border rounded-xl p-6 animate-pulse h-24" />
+      </div>
+    }>
+      <TokenSearchContent />
+    </Suspense>
   );
 }

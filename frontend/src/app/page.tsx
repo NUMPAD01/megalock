@@ -35,9 +35,12 @@ export default function Dashboard() {
   const totalLocks = nextLockId !== undefined ? Number(nextLockId) : null;
 
   const handleSearch = () => {
-    const addr = searchInput.trim();
-    if (addr.length === 42 && addr.startsWith("0x")) {
-      router.push(`/token/${addr}`);
+    const query = searchInput.trim();
+    if (!query) return;
+    if (query.length === 42 && query.startsWith("0x")) {
+      router.push(`/token/${query}`);
+    } else {
+      router.push(`/token?q=${encodeURIComponent(query)}`);
     }
   };
 
@@ -83,11 +86,11 @@ export default function Dashboard() {
         };
 
         const allLogs = [
-          ...lockLogs.slice(-20).map((l) => ({ ...l, _type: "lock" as const })),
-          ...burnLogs.slice(-20).map((l) => ({ ...l, _type: "burn" as const })),
+          ...lockLogs.slice(-5).map((l) => ({ ...l, _type: "lock" as const })),
+          ...burnLogs.slice(-5).map((l) => ({ ...l, _type: "burn" as const })),
         ];
         allLogs.sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)));
-        const recentLogs = allLogs.slice(0, 20);
+        const recentLogs = allLogs.slice(0, 3);
 
         const blockCache = new Map<bigint, number>();
         const events: ActivityEvent[] = [];
@@ -156,7 +159,7 @@ export default function Dashboard() {
         <FadeIn delay={100}>
           <div className="flex gap-2 mt-8 max-w-xl">
             <input
-              type="text" placeholder="Paste a token address (0x...)"
+              type="text" placeholder="Search by name, symbol, or address (0x...)"
               value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               className="flex-1 bg-card border border-card-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
@@ -302,7 +305,7 @@ export default function Dashboard() {
 
         {activitiesLoading ? (
           <FadeIn delay={50}>
-            <div className="bg-card border border-card-border rounded-xl p-6 animate-pulse h-48" />
+            <div className="bg-card border border-card-border rounded-xl p-4 animate-pulse h-24" />
           </FadeIn>
         ) : activities.length === 0 ? (
           <FadeIn delay={50}>
@@ -315,31 +318,31 @@ export default function Dashboard() {
             <div className="bg-card border border-card-border rounded-xl overflow-hidden">
               <div className="divide-y divide-card-border">
                 {activities.map((event, i) => (
-                  <div key={`${event.type}-${event.token}-${i}`}
-                    className="px-4 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                  <Link key={`${event.type}-${event.token}-${i}`} href={`/token/${event.token}`}
+                    className="px-3 py-2 flex items-center gap-2.5 hover:bg-white/[0.03] transition-colors block">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                       event.type === "lock" ? "bg-primary/10" : "bg-danger/10"
                     }`}>
                       {event.type === "lock" ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-primary">
                           <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
                       ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-danger">
                           <path d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
                         </svg>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm">
+                      <p className="text-xs">
                         <span className="text-muted">{shortenAddress(event.actor)}</span>
                         <span className="text-muted mx-1">{event.type === "lock" ? "locked" : "burned"}</span>
                         <span className="font-semibold">{formatTokenAmount(event.amount, event.decimals)}</span>
-                        <Link href={`/token/${event.token}`} className="text-primary hover:underline ml-1">{event.tokenSymbol}</Link>
+                        <span className="text-primary ml-1">{event.tokenSymbol}</span>
                       </p>
                     </div>
-                    <span className="text-muted text-xs shrink-0">{timeAgo(event.timestamp)}</span>
-                  </div>
+                    <span className="text-muted text-[10px] shrink-0">{timeAgo(event.timestamp)}</span>
+                  </Link>
                 ))}
               </div>
             </div>
