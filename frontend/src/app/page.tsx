@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [searchInput, setSearchInput] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchMcap, setSearchMcap] = useState<Record<string, string>>({});
+  const [searchMcap, setSearchMcap] = useState<Record<string, { mcap: string | null; vol: string | null }>>({});
   const { watchlist, removeToken } = useWatchlist();
   const publicClient = usePublicClient();
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
@@ -126,21 +126,24 @@ export default function Dashboard() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);
 
-  // Fetch mcap from DexScreener for search results
+  // Fetch mcap+vol from DexScreener for search results
   useEffect(() => {
     if (searchResults.length === 0) { setSearchMcap({}); return; }
     const fetchMcaps = async () => {
-      const map: Record<string, string> = {};
+      const map: Record<string, { mcap: string | null; vol: string | null }> = {};
       await Promise.all(
         searchResults.map(async (result) => {
-          if (result.circulating_market_cap) { map[result.address_hash] = result.circulating_market_cap; return; }
           try {
             const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${result.address_hash}`);
             if (!res.ok) return;
             const data = await res.json();
             const pair = data.pairs?.[0];
-            if (pair?.marketCap) map[result.address_hash] = String(pair.marketCap);
-            else if (pair?.fdv) map[result.address_hash] = String(pair.fdv);
+            if (pair) {
+              map[result.address_hash] = {
+                mcap: result.circulating_market_cap || (pair.marketCap ? String(pair.marketCap) : pair.fdv ? String(pair.fdv) : null),
+                vol: pair.volume?.h24 ? String(pair.volume.h24) : null,
+              };
+            }
           } catch { /* skip */ }
         })
       );
@@ -306,15 +309,17 @@ export default function Dashboard() {
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium">{result.name}</span>
-                      <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                      <div>
+                        <span className="text-sm font-medium">{result.name}</span>
+                        <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                      </div>
+                      <div className="flex gap-3 text-[10px] text-muted mt-0.5">
+                        <span>MC: <span className="text-foreground font-medium">{searchMcap[result.address_hash]?.mcap ? formatUsd(searchMcap[result.address_hash].mcap) : "—"}</span></span>
+                        <span>VOL: <span className="text-foreground font-medium">{searchMcap[result.address_hash]?.vol ? formatUsd(searchMcap[result.address_hash].vol) : "—"}</span></span>
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
-                      {(result.circulating_market_cap || searchMcap[result.address_hash]) ? (
-                        <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap || searchMcap[result.address_hash])}</span>
-                      ) : (
-                        <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
-                      )}
+                      <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
                     </div>
                   </Link>
                 ))}
@@ -348,7 +353,12 @@ export default function Dashboard() {
       {watchlist.length > 0 && (
         <section>
           <FadeIn>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-4">Watchlist</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-4 flex items-center gap-1.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" className="text-yellow-400">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              Watchlist
+            </p>
           </FadeIn>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {watchlist.map((token, i) => (

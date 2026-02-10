@@ -74,7 +74,7 @@ export default function TokenDetailPage() {
   const [searchingDropdown, setSearchingDropdown] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dexData, setDexData] = useState<{priceUsd: string | null; mcap: number | null; volume24h: number | null} | null>(null);
-  const [dropdownMcap, setDropdownMcap] = useState<Record<string, string>>({});
+  const [dropdownMcap, setDropdownMcap] = useState<Record<string, { mcap: string | null; vol: string | null }>>({});
 
   const publicClient = usePublicClient();
   const watched = tokenInfo ? isWatched(tokenAddress) : false;
@@ -365,21 +365,24 @@ export default function TokenDetailPage() {
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
   }, [searchInput]);
 
-  // Fetch mcap from DexScreener for search dropdown results
+  // Fetch mcap+vol from DexScreener for search dropdown results
   useEffect(() => {
     if (searchDropdown.length === 0) { setDropdownMcap({}); return; }
     const fetchMcaps = async () => {
-      const map: Record<string, string> = {};
+      const map: Record<string, { mcap: string | null; vol: string | null }> = {};
       await Promise.all(
         searchDropdown.map(async (result) => {
-          if (result.circulating_market_cap) { map[result.address_hash] = result.circulating_market_cap; return; }
           try {
             const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${result.address_hash}`);
             if (!res.ok) return;
             const data = await res.json();
             const pair = data.pairs?.[0];
-            if (pair?.marketCap) map[result.address_hash] = String(pair.marketCap);
-            else if (pair?.fdv) map[result.address_hash] = String(pair.fdv);
+            if (pair) {
+              map[result.address_hash] = {
+                mcap: result.circulating_market_cap || (pair.marketCap ? String(pair.marketCap) : pair.fdv ? String(pair.fdv) : null),
+                vol: pair.volume?.h24 ? String(pair.volume.h24) : null,
+              };
+            }
           } catch { /* skip */ }
         })
       );
@@ -432,8 +435,8 @@ export default function TokenDetailPage() {
         </div>
       </FadeIn>
 
-      <FadeIn delay={50}>
-        <div className="relative z-20">
+      <FadeIn delay={50} className="relative z-50">
+        <div className="relative">
           <div className="flex gap-2">
             <input
               type="text" placeholder="Search by name, symbol, or address (0x...)"
@@ -466,15 +469,17 @@ export default function TokenDetailPage() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">{result.name}</span>
-                    <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                    <div>
+                      <span className="text-sm font-medium">{result.name}</span>
+                      <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                    </div>
+                    <div className="flex gap-3 text-[10px] text-muted mt-0.5">
+                      <span>MC: <span className="text-foreground font-medium">{dropdownMcap[result.address_hash]?.mcap ? formatUsd(dropdownMcap[result.address_hash].mcap) : "—"}</span></span>
+                      <span>VOL: <span className="text-foreground font-medium">{dropdownMcap[result.address_hash]?.vol ? formatUsd(dropdownMcap[result.address_hash].vol) : "—"}</span></span>
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
-                    {(result.circulating_market_cap || dropdownMcap[result.address_hash]) ? (
-                      <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap || dropdownMcap[result.address_hash])}</span>
-                    ) : (
-                      <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
-                    )}
+                    <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
                   </div>
                 </Link>
               ))}
@@ -514,10 +519,10 @@ export default function TokenDetailPage() {
                       <img src="/dexscreener.png" alt="DexScreener" className="w-5 h-5 rounded-sm" />
                     </a>
                     <button onClick={toggleWatchlist} title={watched ? "Remove from watchlist" : "Add to watchlist"}
-                      className="text-muted hover:text-primary transition-colors ml-1">
+                      className="text-muted hover:text-yellow-400 transition-colors ml-1">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill={watched ? "currentColor" : "none"}
                         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                        className={watched ? "text-primary" : ""}>
+                        className={watched ? "text-yellow-400" : ""}>
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                       </svg>
                     </button>
