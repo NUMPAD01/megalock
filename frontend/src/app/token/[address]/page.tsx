@@ -3,13 +3,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { createPublicClient, http } from "viem";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
+import { megaeth } from "@/config/chains";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
+
+const rpcClient = createPublicClient({
+  chain: megaeth,
+  transport: http(),
+});
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
 
 interface TokenInfo {
@@ -153,7 +160,6 @@ export default function TokenDetailPage() {
         tokenData = await tokenRes.json();
       } else {
         // Blockscout doesn't have this token indexed — fallback to RPC
-        if (!publicClient) throw new Error("Token not found on MegaETH");
         const erc20 = [
           { type: "function", name: "name", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
           { type: "function", name: "symbol", inputs: [], outputs: [{ type: "string" }], stateMutability: "view" },
@@ -163,10 +169,10 @@ export default function TokenDetailPage() {
         const addr = address as `0x${string}`;
         try {
           const [name, symbol, decimals, totalSupply] = await Promise.all([
-            publicClient.readContract({ address: addr, abi: erc20, functionName: "name" }),
-            publicClient.readContract({ address: addr, abi: erc20, functionName: "symbol" }),
-            publicClient.readContract({ address: addr, abi: erc20, functionName: "decimals" }),
-            publicClient.readContract({ address: addr, abi: erc20, functionName: "totalSupply" }),
+            rpcClient.readContract({ address: addr, abi: erc20, functionName: "name" }),
+            rpcClient.readContract({ address: addr, abi: erc20, functionName: "symbol" }),
+            rpcClient.readContract({ address: addr, abi: erc20, functionName: "decimals" }),
+            rpcClient.readContract({ address: addr, abi: erc20, functionName: "totalSupply" }),
           ]);
           tokenData = {
             name: name as string,
@@ -269,7 +275,7 @@ export default function TokenDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [publicClient]);
+  }, []);
 
   // Auto-fetch on mount
   useEffect(() => {
