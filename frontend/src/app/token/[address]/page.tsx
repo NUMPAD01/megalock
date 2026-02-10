@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
@@ -125,6 +125,10 @@ export default function TokenDetailPage() {
   const [expandedLockId, setExpandedLockId] = useState<number | null>(null);
   const [isContractVerified, setIsContractVerified] = useState<boolean | null>(null);
   const [copiedLockId, setCopiedLockId] = useState<number | null>(null);
+  const [searchDropdown, setSearchDropdown] = useState<Array<{name: string; symbol: string; address_hash: string; icon_url: string | null; circulating_market_cap: string | null}>>([]);
+  const [searchingDropdown, setSearchingDropdown] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dexData, setDexData] = useState<{priceUsd: string | null; mcap: number | null; volume24h: number | null} | null>(null);
 
   const publicClient = usePublicClient();
   const watched = tokenInfo ? isWatched(tokenAddress) : false;
@@ -350,11 +354,12 @@ export default function TokenDetailPage() {
   }, [tokenAddress, fetchTokenData]);
 
   const handleSearch = () => {
-    const addr = searchInput.trim();
-    if (addr.length === 42 && addr.startsWith("0x")) {
-      router.push(`/token/${addr}`);
-    } else {
-      setError("Invalid address. Enter a valid 0x... contract address.");
+    const query = searchInput.trim();
+    if (query.length === 42 && query.startsWith("0x")) {
+      router.push(`/token/${query}`);
+    } else if (searchDropdown.length > 0) {
+      router.push(`/token/${searchDropdown[0].address_hash}`);
+      setSearchDropdown([]);
     }
   };
 
@@ -377,6 +382,59 @@ export default function TokenDetailPage() {
       deployerTxCount,
     });
   }, [tokenInfo, loading, lockedAmount, totalBurned, totalSupply, deployerBalance, devSoldStatus, isContractVerified, deployerTxCount]);
+
+  // Sync search input when navigating between tokens
+  useEffect(() => {
+    setSearchInput(tokenAddress || "");
+    setSearchDropdown([]);
+    setDexData(null);
+  }, [tokenAddress]);
+
+  // Fetch DexScreener data as fallback for price/mcap/volume
+  useEffect(() => {
+    if (!tokenAddress) return;
+    const fetchDex = async () => {
+      try {
+        const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const pair = data.pairs?.[0];
+        if (pair) {
+          setDexData({
+            priceUsd: pair.priceUsd || null,
+            mcap: pair.marketCap || pair.fdv || null,
+            volume24h: pair.volume?.h24 || null,
+          });
+        }
+      } catch { /* skip */ }
+    };
+    fetchDex();
+  }, [tokenAddress]);
+
+  // Auto-search dropdown as user types (debounced)
+  useEffect(() => {
+    const query = searchInput.trim();
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (query.length < 2 || (query.length === 42 && query.startsWith("0x"))) {
+      setSearchDropdown([]);
+      setSearchingDropdown(false);
+      return;
+    }
+    setSearchingDropdown(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://megaeth.blockscout.com/api/v2/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const tokens = (data.items || []).filter(
+          (item: { type: string; token_type: string }) => item.type === "token" && item.token_type === "ERC-20"
+        );
+        setSearchDropdown(tokens);
+      } catch { setSearchDropdown([]); }
+      finally { setSearchingDropdown(false); }
+    }, 400);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [searchInput]);
 
   const handleShareCertificate = async (lock: TokenLockInfo) => {
     if (!tokenInfo) return;
@@ -418,22 +476,58 @@ export default function TokenDetailPage() {
       <FadeIn>
         <div>
           <h1 className="text-3xl font-bold">Token Search</h1>
-          <p className="text-muted mt-2">Search any ERC20 token on MegaETH by contract address</p>
+          <p className="text-muted mt-2">Search any ERC20 token on MegaETH by name, symbol, or contract address</p>
         </div>
       </FadeIn>
 
       <FadeIn delay={50}>
-        <div className="flex gap-2">
-          <input
-            type="text" placeholder="Enter token contract address (0x...)"
-            value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            className="flex-1 bg-card border border-card-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary"
-          />
-          <button onClick={handleSearch} disabled={loading}
-            className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-6 rounded-lg transition-colors">
-            {loading ? "Searching..." : "Search"}
-          </button>
+        <div className="relative">
+          <div className="flex gap-2">
+            <input
+              type="text" placeholder="Search by name, symbol, or address (0x...)"
+              value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="flex-1 bg-card border border-card-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary"
+            />
+            <button onClick={handleSearch} disabled={loading}
+              className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-6 rounded-lg transition-colors">
+              {loading ? "Searching..." : "Search"}
+            </button>
+          </div>
+          {searchingDropdown && (
+            <div className="absolute z-10 left-0 right-0 mt-2 bg-card border border-card-border rounded-xl p-4 animate-pulse h-16" />
+          )}
+          {!searchingDropdown && searchDropdown.length > 0 && (
+            <div className="absolute z-10 left-0 right-0 mt-2 bg-card border border-card-border rounded-xl overflow-hidden max-h-80 overflow-y-auto shadow-lg">
+              {searchDropdown.map((result) => (
+                <Link
+                  key={result.address_hash}
+                  href={`/token/${result.address_hash}`}
+                  onClick={() => setSearchDropdown([])}
+                  className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.04] border-b border-card-border/50 last:border-b-0 transition-colors"
+                >
+                  {result.icon_url ? (
+                    <img src={result.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-primary text-[10px] font-bold">{result.symbol?.slice(0, 2)}</span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">{result.name}</span>
+                    <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {result.circulating_market_cap ? (
+                      <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap)}</span>
+                    ) : (
+                      <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </FadeIn>
 
@@ -482,9 +576,9 @@ export default function TokenDetailPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div><p className="text-muted text-xs">Total Supply</p><p className="font-semibold">{formatTokenAmount(totalSupply, decimals)}</p></div>
                 <div><p className="text-muted text-xs">Holders</p><p className="font-semibold">{tokenInfo.holders_count || "0"}</p></div>
-                <div><p className="text-muted text-xs">Market Cap</p><p className="font-semibold">{formatUsd(tokenInfo.circulating_market_cap)}</p></div>
-                <div><p className="text-muted text-xs">Volume 24h</p><p className="font-semibold">{formatUsd(tokenInfo.volume_24h)}</p></div>
-                <div><p className="text-muted text-xs">Price</p><p className="font-semibold">{formatUsd(tokenInfo.exchange_rate)}</p></div>
+                <div><p className="text-muted text-xs">Market Cap</p><p className="font-semibold">{formatUsd(tokenInfo.circulating_market_cap || dexData?.mcap)}</p></div>
+                <div><p className="text-muted text-xs">Volume 24h</p><p className="font-semibold">{formatUsd(tokenInfo.volume_24h || dexData?.volume24h)}</p></div>
+                <div><p className="text-muted text-xs">Price</p><p className="font-semibold">{formatUsd(tokenInfo.exchange_rate || dexData?.priceUsd)}</p></div>
                 <div><p className="text-muted text-xs">Decimals</p><p className="font-semibold">{tokenInfo.decimals}</p></div>
               </div>
             </div>

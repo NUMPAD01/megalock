@@ -42,7 +42,7 @@ export default function Dashboard() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [watchlistData, setWatchlistData] = useState<Record<string, { mcap: string | null; volume: string | null; price: string | null }>>({});
 
-  // Fetch market data for watchlist tokens
+  // Fetch market data for watchlist tokens (Blockscout + DexScreener fallback)
   useEffect(() => {
     if (watchlist.length === 0) return;
     const fetchData = async () => {
@@ -50,14 +50,32 @@ export default function Dashboard() {
       await Promise.all(
         watchlist.map(async (token) => {
           try {
+            // Try Blockscout first
             const res = await fetch(`https://megaeth.blockscout.com/api/v2/tokens/${token.address}`);
-            if (!res.ok) return;
-            const info = await res.json();
-            data[token.address.toLowerCase()] = {
-              mcap: info.circulating_market_cap || null,
-              volume: info.volume_24h || null,
-              price: info.exchange_rate || null,
-            };
+            if (res.ok) {
+              const info = await res.json();
+              if (info.circulating_market_cap || info.volume_24h || info.exchange_rate) {
+                data[token.address.toLowerCase()] = {
+                  mcap: info.circulating_market_cap || null,
+                  volume: info.volume_24h || null,
+                  price: info.exchange_rate || null,
+                };
+                return;
+              }
+            }
+            // Fallback: DexScreener
+            const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token.address}`);
+            if (dexRes.ok) {
+              const dex = await dexRes.json();
+              const pair = dex.pairs?.[0];
+              if (pair) {
+                data[token.address.toLowerCase()] = {
+                  mcap: pair.marketCap ? String(pair.marketCap) : pair.fdv ? String(pair.fdv) : null,
+                  volume: pair.volume?.h24 ? String(pair.volume.h24) : null,
+                  price: pair.priceUsd || null,
+                };
+              }
+            }
           } catch { /* skip */ }
         })
       );

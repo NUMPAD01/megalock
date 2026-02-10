@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FadeIn } from "@/components/FadeIn";
-import { shortenAddress } from "@/lib/utils";
+import { shortenAddress, formatUsd } from "@/lib/utils";
 
 interface SearchResult {
   type: string;
@@ -13,6 +13,8 @@ interface SearchResult {
   address_hash: string;
   icon_url: string | null;
   token_type: string;
+  circulating_market_cap: string | null;
+  exchange_rate: string | null;
 }
 
 function TokenSearchContent() {
@@ -22,24 +24,18 @@ function TokenSearchContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = useCallback(async (override?: string) => {
-    const query = (override ?? searchInput).trim();
+  const doSearch = useCallback(async (query: string) => {
     setError(null);
-    setSearchResults([]);
-
-    // Direct address navigation
     if (query.length === 42 && query.startsWith("0x")) {
       router.push(`/token/${query}`);
       return;
     }
-
-    // Name/symbol search
     if (query.length < 2) {
-      setError("Enter at least 2 characters to search by name or symbol.");
+      setSearchResults([]);
       return;
     }
-
     setSearching(true);
     try {
       const res = await fetch(
@@ -59,16 +55,42 @@ function TokenSearchContent() {
     } finally {
       setSearching(false);
     }
-  }, [searchInput, router]);
+  }, [router]);
 
+  // Auto-search as user types (debounced 400ms)
+  useEffect(() => {
+    const query = searchInput.trim();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 2 || (query.length === 42 && query.startsWith("0x"))) {
+      setSearchResults([]);
+      setSearching(false);
+      setError(null);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(() => doSearch(query), 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput, doSearch]);
+
+  // Auto-search from URL param
   useEffect(() => {
     const q = searchParams.get("q");
     if (q) {
       setSearchInput(q);
-      handleSearch(q);
+      doSearch(q);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  const handleSubmit = () => {
+    const query = searchInput.trim();
+    if (!query) return;
+    if (query.length === 42 && query.startsWith("0x")) {
+      router.push(`/token/${query}`);
+    } else {
+      doSearch(query);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -84,10 +106,10 @@ function TokenSearchContent() {
           <input
             type="text" placeholder="Search by token name, symbol, or address (0x...)"
             value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             className="flex-1 bg-card border border-card-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary"
           />
-          <button onClick={() => handleSearch()} disabled={searching}
+          <button onClick={handleSubmit} disabled={searching}
             className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium py-3 px-6 rounded-lg transition-colors">
             {searching ? "Searching..." : "Search"}
           </button>
@@ -129,7 +151,13 @@ function TokenSearchContent() {
                   <span className="font-medium">{result.name}</span>
                   <span className="text-muted text-sm ml-2">({result.symbol})</span>
                 </div>
-                <span className="text-muted text-xs font-mono">{shortenAddress(result.address_hash)}</span>
+                <div className="text-right shrink-0">
+                  {result.circulating_market_cap ? (
+                    <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap)}</span>
+                  ) : (
+                    <span className="text-muted text-xs font-mono">{shortenAddress(result.address_hash)}</span>
+                  )}
+                </div>
               </Link>
             ))}
           </div>
