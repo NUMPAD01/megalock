@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits, parseAbiItem } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, ERC20_ABI } from "@/lib/contracts";
@@ -31,6 +31,7 @@ interface PositionEntry {
   priceUsd: number | null;
   priceChange24h: number | null;
   valueUsd: number | null;
+  mcap: number | null;
 }
 
 function formatUsd(value: number): string {
@@ -38,19 +39,13 @@ function formatUsd(value: number): string {
   if (value < 1) return `$${value.toFixed(4)}`;
   if (value < 1000) return `$${value.toFixed(2)}`;
   if (value < 1_000_000) return `$${(value / 1000).toFixed(1)}K`;
-  return `$${(value / 1_000_000).toFixed(2)}M`;
-}
-
-function formatPrice(price: number): string {
-  if (price < 0.000001) return `$${price.toExponential(2)}`;
-  if (price < 0.01) return `$${price.toFixed(6)}`;
-  if (price < 1) return `$${price.toFixed(4)}`;
-  if (price < 1000) return `$${price.toFixed(2)}`;
-  return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (value < 1_000_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  return `$${(value / 1_000_000_000).toFixed(2)}B`;
 }
 
 export default function ProfileAddressPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const profileAddress = params.address as string;
   const { address: connectedAddress, isConnected } = useAccount();
   const { username, xHandle, setUsername, setXHandle } = useProfile();
@@ -59,9 +54,7 @@ export default function ProfileAddressPage() {
   const isOwnProfile = isConnected && connectedAddress?.toLowerCase() === profileAddress?.toLowerCase();
 
   const [editingUsername, setEditingUsername] = useState(false);
-  const [editingX, setEditingX] = useState(false);
   const [tempUsername, setTempUsername] = useState("");
-  const [tempX, setTempX] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [burns, setBurns] = useState<BurnEntry[]>([]);
   const [burnsLoading, setBurnsLoading] = useState(false);
@@ -85,6 +78,15 @@ export default function ProfileAddressPage() {
 
   const allIds = new Set([...(creatorLockIds ?? []), ...(beneficiaryLockIds ?? [])]);
   const lockIds = Array.from(allIds).sort((a, b) => Number(b) - Number(a));
+
+  // Handle X OAuth callback
+  useEffect(() => {
+    const verifiedX = searchParams.get("verified_x");
+    if (verifiedX && isOwnProfile) {
+      setXHandle(verifiedX);
+      window.history.replaceState({}, "", `/profile/${profileAddress}`);
+    }
+  }, [searchParams, isOwnProfile, profileAddress, setXHandle]);
 
   // Fetch burn events
   useEffect(() => {
@@ -133,7 +135,7 @@ export default function ProfileAddressPage() {
     fetchBurns();
   }, [publicClient, profileAddress]);
 
-  // Fetch positions (token balances + prices)
+  // Fetch positions (token balances + prices + mcap)
   useEffect(() => {
     if (!profileAddress) { setPositions([]); return; }
 
@@ -157,9 +159,10 @@ export default function ProfileAddressPage() {
           priceUsd: null,
           priceChange24h: null,
           valueUsd: null,
+          mcap: null,
         }));
 
-        // Fetch prices from DexScreener (limit to 20 tokens)
+        // Fetch prices + mcap from DexScreener (limit to 20 tokens)
         await Promise.allSettled(
           entries.slice(0, 20).map(async (entry) => {
             try {
@@ -170,6 +173,7 @@ export default function ProfileAddressPage() {
               if (pair) {
                 entry.priceUsd = parseFloat(pair.priceUsd) || null;
                 entry.priceChange24h = pair.priceChange?.h24 ?? null;
+                entry.mcap = pair.marketCap ?? pair.fdv ?? null;
                 if (entry.priceUsd) {
                   entry.valueUsd = parseFloat(formatUnits(entry.balance, entry.decimals)) * entry.priceUsd;
                 }
@@ -291,41 +295,24 @@ export default function ProfileAddressPage() {
                 </button>
               </div>
 
-              {/* X Handle */}
+              {/* X Handle - OAuth linked */}
               {isOwnProfile ? (
-                <div>
-                  {editingX ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted text-sm">@</span>
-                      <input
-                        type="text" value={tempX} onChange={(e) => setTempX(e.target.value.replace(/^@/, ""))}
-                        maxLength={30} placeholder="username"
-                        className="bg-background border border-card-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary w-48"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") { setXHandle(tempX); setEditingX(false); }
-                          if (e.key === "Escape") setEditingX(false);
-                        }}
-                      />
-                      <button onClick={() => { setXHandle(tempX); setEditingX(false); }}
-                        className="text-xs text-success hover:underline">Save</button>
-                      <button onClick={() => setEditingX(false)}
-                        className="text-xs text-muted hover:underline">Cancel</button>
-                    </div>
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-muted">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  {xHandle ? (
+                    <>
+                      <a href={`https://x.com/${xHandle}`} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline">@{xHandle}</a>
+                      <a href="/api/auth/twitter" className="text-xs text-muted hover:text-primary hover:underline">Relink</a>
+                      <button onClick={() => setXHandle("")} className="text-xs text-muted hover:text-danger hover:underline">Unlink</button>
+                    </>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-muted">
-                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                      </svg>
-                      {xHandle ? (
-                        <a href={`https://x.com/${xHandle}`} target="_blank" rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline">@{xHandle}</a>
-                      ) : (
-                        <span className="text-sm text-muted">Not linked</span>
-                      )}
-                      <button onClick={() => { setTempX(xHandle); setEditingX(true); }}
-                        className="text-xs text-primary hover:underline">{xHandle ? "Edit" : "Link X"}</button>
-                    </div>
+                    <a href="/api/auth/twitter"
+                      className="text-sm text-primary hover:underline flex items-center gap-1">
+                      Connect X
+                    </a>
                   )}
                 </div>
               ) : null}
@@ -412,7 +399,7 @@ export default function ProfileAddressPage() {
                     <tr className="text-muted text-xs border-b border-card-border">
                       <th className="text-left p-3">Token</th>
                       <th className="text-right p-3">Balance</th>
-                      <th className="text-right p-3">Price</th>
+                      <th className="text-right p-3">MCap</th>
                       <th className="text-right p-3">Value</th>
                       <th className="text-right p-3">24h</th>
                       <th className="text-right p-3">Actions</th>
@@ -432,7 +419,7 @@ export default function ProfileAddressPage() {
                           {formatTokenAmount(pos.balance, pos.decimals)}
                         </td>
                         <td className="p-3 text-right text-muted">
-                          {pos.priceUsd ? formatPrice(pos.priceUsd) : "\u2014"}
+                          {pos.mcap ? formatUsd(pos.mcap) : "\u2014"}
                         </td>
                         <td className="p-3 text-right font-medium">
                           {pos.valueUsd ? formatUsd(pos.valueUsd) : "\u2014"}

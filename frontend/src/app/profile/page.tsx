@@ -10,7 +10,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (isConnected && address) {
-      router.replace(`/profile/${address}`);
+      const params = new URLSearchParams(window.location.search);
+      const query = params.toString();
+      router.replace(`/profile/${address}${query ? `?${query}` : ""}`);
     }
   }, [isConnected, address, router]);
 
