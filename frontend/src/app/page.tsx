@@ -222,8 +222,8 @@ export default function Dashboard() {
               <div className="mt-2 bg-card border border-card-border rounded-xl p-4 animate-pulse h-16" />
             )}
             {!searching && searchResults.length > 0 && (
-              <div className="mt-2 bg-card border border-card-border rounded-xl overflow-hidden">
-                {searchResults.slice(0, 5).map((result) => (
+              <div className="mt-2 bg-card border border-card-border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                {searchResults.map((result) => (
                   <Link
                     key={result.address_hash}
                     href={`/token/${result.address_hash}`}
