@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
-import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
+import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel, formatUsd } from "@/lib/utils";
 import { rpcClient } from "@/lib/rpcClient";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { generateLockCertificate } from "@/lib/generateLockCertificate";
@@ -24,6 +24,8 @@ interface TokenInfo {
   type: string;
   exchange_rate: string | null;
   icon_url: string | null;
+  circulating_market_cap: string | null;
+  volume_24h: string | null;
 }
 
 interface HolderInfo {
@@ -220,7 +222,7 @@ export default function TokenDetailPage() {
           tokenData = {
             name: name as string, symbol: symbol as string,
             decimals: String(decimals), total_supply: String(totalSupply),
-            holders_count: "0", type: "ERC-20", exchange_rate: null, icon_url: null,
+            holders_count: "0", type: "ERC-20", exchange_rate: null, icon_url: null, circulating_market_cap: null, volume_24h: null,
           };
         } catch {
           if (addressRes.ok) {
@@ -458,8 +460,10 @@ export default function TokenDetailPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div><p className="text-muted text-xs">Total Supply</p><p className="font-semibold">{formatTokenAmount(totalSupply, decimals)}</p></div>
                 <div><p className="text-muted text-xs">Holders</p><p className="font-semibold">{tokenInfo.holders_count || "0"}</p></div>
+                <div><p className="text-muted text-xs">Market Cap</p><p className="font-semibold">{formatUsd(tokenInfo.circulating_market_cap)}</p></div>
+                <div><p className="text-muted text-xs">Volume 24h</p><p className="font-semibold">{formatUsd(tokenInfo.volume_24h)}</p></div>
+                <div><p className="text-muted text-xs">Price</p><p className="font-semibold">{formatUsd(tokenInfo.exchange_rate)}</p></div>
                 <div><p className="text-muted text-xs">Decimals</p><p className="font-semibold">{tokenInfo.decimals}</p></div>
-                <div><p className="text-muted text-xs">Type</p><p className="font-semibold">{tokenInfo.type}</p></div>
               </div>
             </div>
           </FadeIn>

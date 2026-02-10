@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useReadContract, usePublicClient } from "wagmi";
 import { parseAbiItem } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, ERC20_ABI } from "@/lib/contracts";
-import { shortenAddress, formatTokenAmount, timeAgo } from "@/lib/utils";
+import { shortenAddress, formatTokenAmount, timeAgo, formatUsd } from "@/lib/utils";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { FadeIn } from "@/components/FadeIn";
 
@@ -27,6 +27,8 @@ interface SearchResult {
   address_hash: string;
   icon_url: string | null;
   token_type: string;
+  circulating_market_cap: string | null;
+  exchange_rate: string | null;
 }
 
 export default function Dashboard() {
@@ -38,6 +40,31 @@ export default function Dashboard() {
   const publicClient = usePublicClient();
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [watchlistData, setWatchlistData] = useState<Record<string, { mcap: string | null; volume: string | null; price: string | null }>>({});
+
+  // Fetch market data for watchlist tokens
+  useEffect(() => {
+    if (watchlist.length === 0) return;
+    const fetchData = async () => {
+      const data: Record<string, { mcap: string | null; volume: string | null; price: string | null }> = {};
+      await Promise.all(
+        watchlist.map(async (token) => {
+          try {
+            const res = await fetch(`https://megaeth.blockscout.com/api/v2/tokens/${token.address}`);
+            if (!res.ok) return;
+            const info = await res.json();
+            data[token.address.toLowerCase()] = {
+              mcap: info.circulating_market_cap || null,
+              volume: info.volume_24h || null,
+              price: info.exchange_rate || null,
+            };
+          } catch { /* skip */ }
+        })
+      );
+      setWatchlistData(data);
+    };
+    fetchData();
+  }, [watchlist]);
 
   const { data: nextLockId } = useReadContract({
     address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "nextLockId",
@@ -240,7 +267,13 @@ export default function Dashboard() {
                       <span className="text-sm font-medium">{result.name}</span>
                       <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
                     </div>
-                    <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
+                    <div className="text-right shrink-0">
+                      {result.circulating_market_cap ? (
+                        <span className="text-xs font-medium">{formatUsd(result.circulating_market_cap)}</span>
+                      ) : (
+                        <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address_hash)}</span>
+                      )}
+                    </div>
                   </Link>
                 ))}
               </div>
@@ -292,7 +325,18 @@ export default function Dashboard() {
                     <h4 className="font-semibold group-hover:text-primary transition-colors">
                       {token.name} <span className="text-muted font-normal">({token.symbol})</span>
                     </h4>
-                    <p className="text-muted text-xs font-mono mt-1">{shortenAddress(token.address)}</p>
+                    {(() => {
+                      const d = watchlistData[token.address.toLowerCase()];
+                      return d ? (
+                        <div className="flex gap-3 mt-1.5 text-[11px]">
+                          {d.mcap && <span className="text-muted">MCap <span className="text-foreground font-medium">{formatUsd(d.mcap)}</span></span>}
+                          {d.volume && <span className="text-muted">Vol <span className="text-foreground font-medium">{formatUsd(d.volume)}</span></span>}
+                          {d.price && <span className="text-muted">Price <span className="text-foreground font-medium">{formatUsd(d.price)}</span></span>}
+                        </div>
+                      ) : (
+                        <p className="text-muted text-xs font-mono mt-1">{shortenAddress(token.address)}</p>
+                      );
+                    })()}
                   </Link>
                 </div>
               </FadeIn>

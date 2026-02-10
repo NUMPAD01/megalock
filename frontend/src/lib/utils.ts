@@ -70,6 +70,17 @@ export function getDateFromNow(days: number): string {
   return localDate.toISOString().slice(0, 16);
 }
 
+export function formatUsd(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(num) || num === 0) return "—";
+  if (num < 1) return `$${num.toFixed(4)}`;
+  if (num < 1000) return `$${num.toFixed(2)}`;
+  if (num < 1_000_000) return `$${(num / 1000).toFixed(1)}K`;
+  if (num < 1_000_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
+  return `$${(num / 1_000_000_000).toFixed(2)}B`;
+}
+
 export function timeAgo(timestamp: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - timestamp;
