@@ -1,13 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { useReadContract } from "wagmi";
-import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
-import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import { useReadContract, usePublicClient } from "wagmi";
+import { parseAbiItem } from "viem";
+import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, ERC20_ABI } from "@/lib/contracts";
+import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress, timeAgo } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
+import Link from "next/link";
+
+type ExplorerTab = "locks" | "burns";
+type LockFilter = "locked" | "unlocked";
+
+interface BurnEvent {
+  token: string;
+  burner: string;
+  amount: bigint;
+  symbol?: string;
+  decimals?: number;
+}
 
 export default function ExplorePage() {
+  const publicClient = usePublicClient();
+  const [activeTab, setActiveTab] = useState<ExplorerTab>("locks");
+  const [lockFilter, setLockFilter] = useState<LockFilter>("locked");
+  const [burns, setBurns] = useState<BurnEvent[]>([]);
+  const [burnsLoading, setBurnsLoading] = useState(false);
+
   const { data: nextLockId } = useReadContract({
     address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "nextLockId",
   });
@@ -15,25 +34,190 @@ export default function ExplorePage() {
   const totalLocks = nextLockId ? Number(nextLockId) : 0;
   const lockIds = Array.from({ length: Math.min(totalLocks, 50) }, (_, i) => BigInt(totalLocks - 1 - i));
 
+  // Fetch all burn events from MegaBurn contract
+  useEffect(() => {
+    if (!publicClient) { setBurns([]); return; }
+
+    const fetchBurns = async () => {
+      setBurnsLoading(true);
+      try {
+        const logs = await publicClient.getLogs({
+          address: MEGABURN_ADDRESS,
+          event: parseAbiItem("event TokensBurned(address indexed token, address indexed burner, uint256 amount)"),
+          fromBlock: 0n,
+          toBlock: "latest",
+        });
+
+        const entries: BurnEvent[] = [];
+        const symbolCache = new Map<string, { symbol?: string; decimals?: number }>();
+
+        for (const log of logs) {
+          const token = log.args.token!;
+          const burner = log.args.burner!;
+          const amount = log.args.amount!;
+
+          let cached = symbolCache.get(token);
+          if (!cached) {
+            let symbol: string | undefined;
+            let decimals: number | undefined;
+            try {
+              symbol = await publicClient.readContract({
+                address: token as `0x${string}`, abi: ERC20_ABI, functionName: "symbol",
+              }) as string;
+              decimals = await publicClient.readContract({
+                address: token as `0x${string}`, abi: ERC20_ABI, functionName: "decimals",
+              }) as number;
+            } catch { /* skip */ }
+            cached = { symbol, decimals };
+            symbolCache.set(token, cached);
+          }
+
+          entries.push({ token, burner, amount, symbol: cached.symbol, decimals: cached.decimals });
+        }
+
+        entries.reverse();
+        setBurns(entries);
+      } catch {
+        setBurns([]);
+      } finally {
+        setBurnsLoading(false);
+      }
+    };
+
+    fetchBurns();
+  }, [publicClient]);
+
+  const tabs: { key: ExplorerTab; label: string; count: number }[] = [
+    { key: "locks", label: "Locks", count: totalLocks },
+    { key: "burns", label: "Burns", count: burns.length },
+  ];
+
   return (
     <div className="space-y-6">
       <FadeIn>
         <div>
           <h1 className="text-3xl font-bold">Explorer</h1>
-          <p className="text-muted mt-2">Browse all locks on MegaScan — {totalLocks} total</p>
+          <p className="text-muted mt-2">Browse all locks and burns on MegaScan</p>
         </div>
       </FadeIn>
 
-      {totalLocks === 0 ? (
-        <div className="bg-card border border-card-border rounded-xl p-8 text-center">
-          <p className="text-muted">No locks created yet</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {lockIds.map((id) => (
-            <ExploreLockRow key={id.toString()} lockId={id} />
+      {/* Tabs */}
+      <FadeIn delay={50}>
+        <div className="flex gap-1 border-b border-card-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === tab.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+              <span className="ml-1.5 text-xs bg-card-border/50 px-1.5 py-0.5 rounded">{tab.count}</span>
+            </button>
           ))}
         </div>
+      </FadeIn>
+
+      {/* Tab content */}
+      {activeTab === "locks" && (
+        <FadeIn delay={100}>
+          {/* Lock / Unlock sub-tabs */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setLockFilter("locked")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                lockFilter === "locked"
+                  ? "bg-primary text-black"
+                  : "bg-card border border-card-border text-muted hover:text-foreground"
+              }`}
+            >
+              Locked
+            </button>
+            <button
+              onClick={() => setLockFilter("unlocked")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                lockFilter === "unlocked"
+                  ? "bg-primary text-black"
+                  : "bg-card border border-card-border text-muted hover:text-foreground"
+              }`}
+            >
+              Unlocked
+            </button>
+          </div>
+
+          {totalLocks === 0 ? (
+            <div className="bg-card border border-card-border rounded-xl p-8 text-center">
+              <p className="text-muted">No locks created yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {lockIds.map((id) => (
+                <ExploreLockRow key={id.toString()} lockId={id} filter={lockFilter} />
+              ))}
+            </div>
+          )}
+        </FadeIn>
+      )}
+
+      {activeTab === "burns" && (
+        <FadeIn delay={100}>
+          {burnsLoading ? (
+            <div className="bg-card border border-card-border rounded-xl p-6 animate-pulse h-32" />
+          ) : burns.length === 0 ? (
+            <div className="bg-card border border-card-border rounded-xl p-8 text-center">
+              <p className="text-muted">No burns found</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-muted text-xs border-b border-card-border">
+                      <th className="text-left p-3">Token</th>
+                      <th className="text-left p-3">Burner</th>
+                      <th className="text-right p-3">Amount</th>
+                      <th className="text-right p-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {burns.map((burn, i) => (
+                      <tr key={`${burn.token}-${burn.burner}-${i}`} className="border-b border-card-border/50 hover:bg-white/[0.02]">
+                        <td className="p-3">
+                          <Link href={`/token/${burn.token}`} className="group">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium group-hover:text-primary transition-colors">
+                                {burn.symbol || "???"}
+                              </span>
+                              <span className="text-muted text-xs font-mono">{shortenAddress(burn.token)}</span>
+                            </div>
+                          </Link>
+                        </td>
+                        <td className="p-3">
+                          <Link href={`/profile/${burn.burner}`} className="text-primary hover:underline text-xs font-mono">
+                            {shortenAddress(burn.burner)}
+                          </Link>
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className="font-semibold text-danger">
+                            {formatTokenAmount(burn.amount, burn.decimals ?? 18)}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <Link href={`/token/${burn.token}`} className="text-xs text-primary hover:underline">
+                            View Token
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </FadeIn>
       )}
     </div>
   );
@@ -52,7 +236,7 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
-function ExploreLockRow({ lockId }: { lockId: bigint }) {
+function ExploreLockRow({ lockId, filter }: { lockId: bigint; filter: LockFilter }) {
   const [expanded, setExpanded] = useState(false);
 
   const { data: lock } = useReadContract({
@@ -83,13 +267,19 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
 
   if (!lock) return <div className="bg-card border border-card-border rounded-xl p-4 animate-pulse h-16" />;
 
+  const now = Math.floor(Date.now() / 1000);
+  const startT = Number(lock.startTime);
+  const endT = Number(lock.endTime);
+  const isUnlocked = lock.cancelled || now >= endT;
+
+  // Filter: hide if doesn't match
+  if (filter === "locked" && isUnlocked) return null;
+  if (filter === "unlocked" && !isUnlocked) return null;
+
   const vestedPercent = lock.totalAmount > 0n && vested ? Number((vested * 10000n) / lock.totalAmount) / 100 : 0;
   const supplyPercent = totalSupply && totalSupply > 0n ? Number((lock.totalAmount * 10000n) / totalSupply) / 100 : 0;
   const displayName = tokenName && tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenSymbol || shortenAddress(lock.token);
   const remaining = lock.totalAmount - lock.claimedAmount;
-  const now = Math.floor(Date.now() / 1000);
-  const startT = Number(lock.startTime);
-  const endT = Number(lock.endTime);
 
   // Time until unlock
   let timeStatus = "";
@@ -121,6 +311,7 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
           <div className="flex items-center gap-3">
             <span className="bg-primary/10 text-primary text-xs font-medium px-2 py-1 rounded">{getLockTypeLabel(lock.lockType)}</span>
             {lock.cancelled && <span className="bg-danger/10 text-danger text-xs font-medium px-2 py-1 rounded">Cancelled</span>}
+            <span className="text-muted text-[10px]">{timeAgo(startT)}</span>
           </div>
           <div className="text-right flex items-center gap-2">
             <span className="text-sm font-semibold">{formatTokenAmount(lock.totalAmount)} {tokenSymbol || "tokens"}</span>
@@ -132,18 +323,18 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
         <div className="mt-2 flex items-center justify-between text-xs text-muted flex-wrap gap-2">
           <div className="flex gap-4 flex-wrap items-center">
             <span className="flex items-center gap-1">
-              Token: <span className="font-medium text-foreground">{displayName}</span>
+              Token: <Link href={`/token/${lock.token}`} onClick={(e) => e.stopPropagation()} className="font-medium text-foreground hover:text-primary transition-colors">{displayName}</Link>
               <a href={`https://dexscreener.com/megaeth/${lock.token}`} target="_blank" rel="noopener noreferrer" title="DexScreener" onClick={(e) => e.stopPropagation()} className="opacity-60 hover:opacity-100 transition-opacity">
                 <img src="/dexscreener.png" alt="DS" className="w-3.5 h-3.5 rounded-sm inline-block" />
               </a>
               <CopyBtn text={lock.token} />
             </span>
             <span className="flex items-center gap-1">
-              Creator: <a href={`https://megaeth.blockscout.com/address/${lock.creator}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.creator)}</a>
+              Creator: <Link href={`/profile/${lock.creator}`} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.creator)}</Link>
               <CopyBtn text={lock.creator} />
             </span>
             <span className="flex items-center gap-1">
-              Beneficiary: <a href={`https://megaeth.blockscout.com/address/${lock.beneficiary}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.beneficiary)}</a>
+              Beneficiary: <Link href={`/profile/${lock.beneficiary}`} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.beneficiary)}</Link>
               <CopyBtn text={lock.beneficiary} />
             </span>
           </div>
@@ -201,9 +392,9 @@ function ExploreLockRow({ lockId }: { lockId: bigint }) {
                 target="_blank" rel="noopener noreferrer"
                 className="text-xs text-primary hover:underline"
                 onClick={(e) => e.stopPropagation()}>View on Blockscout</a>
-              <a href={`/token/${lock.token}`}
+              <Link href={`/token/${lock.token}`}
                 className="text-xs text-primary hover:underline"
-                onClick={(e) => e.stopPropagation()}>Token Analytics</a>
+                onClick={(e) => e.stopPropagation()}>Token Analytics</Link>
             </div>
           </div>
         </div>

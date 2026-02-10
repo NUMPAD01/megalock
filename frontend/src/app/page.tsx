@@ -29,7 +29,7 @@ export default function Dashboard() {
       {/* Hero */}
       <section className="pt-6 md:pt-12">
         <FadeIn>
-          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
+          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight gradient-text inline-block">
             MegaScan
           </h1>
           <p className="text-muted text-base md:text-lg mt-3 max-w-lg">
@@ -83,7 +83,7 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FadeIn delay={0}>
-            <Link href="/create" className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/50 transition-all group block">
+            <Link href="/create" className="bg-card border border-card-border rounded-xl p-5 card-glow card-texture transition-all group block">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
@@ -99,7 +99,7 @@ export default function Dashboard() {
           </FadeIn>
 
           <FadeIn delay={50}>
-            <Link href="/token" className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/50 transition-all group block">
+            <Link href="/token" className="bg-card border border-card-border rounded-xl p-5 card-glow card-texture transition-all group block">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
@@ -115,7 +115,7 @@ export default function Dashboard() {
           </FadeIn>
 
           <FadeIn delay={100}>
-            <Link href="/burn" className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/50 transition-all group block">
+            <Link href="/burn" className="bg-card border border-card-border rounded-xl p-5 card-glow card-texture transition-all group block">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-danger">
@@ -131,7 +131,7 @@ export default function Dashboard() {
           </FadeIn>
 
           <FadeIn delay={150}>
-            <Link href="/explore" className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/50 transition-all group block">
+            <Link href="/explore" className="bg-card border border-card-border rounded-xl p-5 card-glow card-texture transition-all group block">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-primary">

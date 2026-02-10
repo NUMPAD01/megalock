@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useReadContract, usePublicClient } from "wagmi";
+import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
-import { useProfile } from "@/contexts/ProfileContext";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
@@ -47,13 +46,13 @@ export default function TokenDetailPage() {
   const router = useRouter();
   const tokenAddress = params.address as string;
 
-  const { username: myUsername, address: myAddress } = useProfile();
+  const { address: myAddress } = useAccount();
   const [searchInput, setSearchInput] = useState(tokenAddress || "");
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [holders, setHolders] = useState<HolderInfo[]>([]);
   const [deployerAddress, setDeployerAddress] = useState<string | null>(null);
   const [deployerBalance, setDeployerBalance] = useState<string | null>(null);
-  const [deployerTokensCreated, setDeployerTokensCreated] = useState<number | null>(null);
+  const [deployerTxCount, setDeployerTxCount] = useState<number | null>(null);
   const [devSoldStatus, setDevSoldStatus] = useState<"sold" | "holding" | "never_held" | null>(null);
   const [devTotalReceived, setDevTotalReceived] = useState<bigint | null>(null);
   const [devTotalSold, setDevTotalSold] = useState<bigint | null>(null);
@@ -135,7 +134,7 @@ export default function TokenDetailPage() {
     setHolders([]);
     setDeployerAddress(null);
     setDeployerBalance(null);
-    setDeployerTokensCreated(null);
+    setDeployerTxCount(null);
     setDevSoldStatus(null);
     setDevTotalReceived(null);
     setDevTotalSold(null);
@@ -191,10 +190,10 @@ export default function TokenDetailPage() {
         setDeployerAddress(deployer);
 
         try {
-          const [balRes, transfersRes, txRes] = await Promise.all([
+          const [balRes, transfersRes, countersRes] = await Promise.all([
             fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/token-balances`),
             fetch(`${BLOCKSCOUT_V1}?module=account&action=tokentx&address=${deployer}&contractaddress=${address}&sort=asc&page=1&offset=100`),
-            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/transactions`),
+            fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/counters`),
           ]);
 
           let currentBalance = "0";
@@ -226,28 +225,10 @@ export default function TokenDetailPage() {
             else setDevSoldStatus("never_held");
           }
 
-          const createdContracts = new Set<string>();
-
-          if (txRes.ok) {
-            const txData = await txRes.json();
-            for (const tx of txData.items || []) {
-              if (tx.created_contract?.hash) createdContracts.add(tx.created_contract.hash.toLowerCase());
-            }
+          if (countersRes.ok) {
+            const counters = await countersRes.json();
+            setDeployerTxCount(Number(counters.transactions_count) || 0);
           }
-
-          try {
-            const itxRes = await fetch(`${BLOCKSCOUT_API}/addresses/${deployer}/internal-transactions?filter=to%20%7C%20from`);
-            if (itxRes.ok) {
-              const itxData = await itxRes.json();
-              for (const itx of itxData.items || []) {
-                if ((itx.type === "create" || itx.type === "create2") && itx.created_contract?.hash) {
-                  createdContracts.add(itx.created_contract.hash.toLowerCase());
-                }
-              }
-            }
-          } catch { /* Non-critical */ }
-
-          setDeployerTokensCreated(createdContracts.size);
         } catch { /* Non-critical */ }
       }
     } catch (err) {
@@ -356,10 +337,10 @@ export default function TokenDetailPage() {
                       <a href={`https://megaeth.blockscout.com/address/${deployerAddress}`} target="_blank" rel="noopener noreferrer"
                         className="text-primary text-sm font-mono hover:underline">{shortenAddress(deployerAddress)}</a>
                     </div>
-                    {deployerTokensCreated !== null && (
+                    {deployerTxCount !== null && (
                       <div>
-                        <p className="text-muted text-xs">Contracts Created on MegaETH</p>
-                        <p className="font-semibold">{deployerTokensCreated} contract{deployerTokensCreated !== 1 ? "s" : ""}</p>
+                        <p className="text-muted text-xs">Transactions on MegaETH</p>
+                        <p className="font-semibold">{deployerTxCount} tx{deployerTxCount !== 1 ? "s" : ""}</p>
                       </div>
                     )}
                     <div>
@@ -512,6 +493,7 @@ export default function TokenDetailPage() {
                         const pct = totalSupply > 0n ? Number((balance * 10000n) / totalSupply) / 100 : 0;
                         const isDev = deployerAddress && holder.address.hash.toLowerCase() === deployerAddress.toLowerCase();
                         const isMe = myAddress && holder.address.hash.toLowerCase() === myAddress.toLowerCase();
+                        const displayLabel = holder.address.name || shortenAddress(holder.address.hash);
 
                         return (
                           <tr key={holder.address.hash} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
@@ -519,9 +501,9 @@ export default function TokenDetailPage() {
                             <td className="py-2 pr-4">
                               <div className="flex items-center gap-1.5">
                                 <Link href={`/profile/${holder.address.hash}`} className="font-mono text-xs hover:text-primary">
-                                  {isMe && myUsername ? myUsername : holder.address.name || shortenAddress(holder.address.hash)}
+                                  {displayLabel}
                                 </Link>
-                                {isMe && myUsername && <span className="text-[10px] text-muted font-mono">({shortenAddress(holder.address.hash)})</span>}
+                                {holder.address.name && <span className="text-[10px] text-muted font-mono">({shortenAddress(holder.address.hash)})</span>}
                               </div>
                             </td>
                             <td className="py-2 pr-4 text-right font-medium">{formatTokenAmount(balance, decimals)}</td>

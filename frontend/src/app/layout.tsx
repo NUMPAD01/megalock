@@ -31,8 +31,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <div className="bg-mesh" />
           <Header />
-          <main className="md:ml-60 pt-14 md:pt-0 min-h-screen">
+          <main className="md:ml-60 pt-14 md:pt-0 min-h-screen relative z-10">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               {children}
             </div>

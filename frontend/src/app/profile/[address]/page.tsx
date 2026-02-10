@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits, parseAbiItem } from "viem";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
-import { useProfile } from "@/contexts/ProfileContext";
 import Link from "next/link";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
@@ -45,16 +44,12 @@ function formatUsd(value: number): string {
 
 export default function ProfileAddressPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const profileAddress = params.address as string;
   const { address: connectedAddress, isConnected } = useAccount();
-  const { username, xHandle, setUsername, setXHandle } = useProfile();
   const publicClient = usePublicClient();
 
   const isOwnProfile = isConnected && connectedAddress?.toLowerCase() === profileAddress?.toLowerCase();
 
-  const [editingUsername, setEditingUsername] = useState(false);
-  const [tempUsername, setTempUsername] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [burns, setBurns] = useState<BurnEntry[]>([]);
   const [burnsLoading, setBurnsLoading] = useState(false);
@@ -78,15 +73,6 @@ export default function ProfileAddressPage() {
 
   const allIds = new Set([...(creatorLockIds ?? []), ...(beneficiaryLockIds ?? [])]);
   const lockIds = Array.from(allIds).sort((a, b) => Number(b) - Number(a));
-
-  // Handle X OAuth callback
-  useEffect(() => {
-    const verifiedX = searchParams.get("verified_x");
-    if (verifiedX && isOwnProfile) {
-      setXHandle(verifiedX);
-      window.history.replaceState({}, "", `/profile/${profileAddress}`);
-    }
-  }, [searchParams, isOwnProfile, profileAddress, setXHandle]);
 
   // Fetch burn events
   useEffect(() => {
@@ -142,7 +128,30 @@ export default function ProfileAddressPage() {
     const fetchPositions = async () => {
       setPositionsLoading(true);
       try {
-        const res = await fetch(`${BLOCKSCOUT_API}/addresses/${profileAddress}/token-balances`);
+        const [nativeRes, res] = await Promise.all([
+          fetch(`${BLOCKSCOUT_API}/addresses/${profileAddress}`),
+          fetch(`${BLOCKSCOUT_API}/addresses/${profileAddress}/token-balances`),
+        ]);
+
+        let ethEntry: PositionEntry | null = null;
+        if (nativeRes.ok) {
+          const nativeData = await nativeRes.json();
+          const coinBalance = nativeData.coin_balance;
+          if (coinBalance && BigInt(coinBalance) > 0n) {
+            ethEntry = {
+              token: "native",
+              symbol: "ETH",
+              name: "MegaETH",
+              decimals: 18,
+              balance: BigInt(coinBalance),
+              priceUsd: null,
+              priceChange24h: null,
+              valueUsd: null,
+              mcap: null,
+            };
+          }
+        }
+
         if (!res.ok) throw new Error("Failed");
         const data = await res.json();
 
@@ -162,7 +171,6 @@ export default function ProfileAddressPage() {
           mcap: null,
         }));
 
-        // Fetch prices + mcap from DexScreener (limit to 20 tokens)
         await Promise.allSettled(
           entries.slice(0, 20).map(async (entry) => {
             try {
@@ -183,6 +191,11 @@ export default function ProfileAddressPage() {
         );
 
         entries.sort((a, b) => (b.valueUsd ?? -1) - (a.valueUsd ?? -1));
+
+        if (ethEntry) {
+          entries.unshift(ethEntry);
+        }
+
         setPositions(entries);
       } catch {
         setPositions([]);
@@ -211,8 +224,6 @@ export default function ProfileAddressPage() {
     );
   }
 
-  const displayName = isOwnProfile ? username : null;
-
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "overview", label: "Overview" },
     { key: "positions", label: "Positions", count: positions.length },
@@ -223,53 +234,21 @@ export default function ProfileAddressPage() {
   return (
     <div className="space-y-6">
       <FadeIn>
-        <h1 className="text-3xl font-bold">{isOwnProfile ? "Profile" : "Wallet Profile"}</h1>
+        <h1 className="text-3xl font-bold">{isOwnProfile ? "My Wallet" : "Wallet Profile"}</h1>
       </FadeIn>
 
-      {/* Profile Card */}
+      {/* Wallet Card */}
       <FadeIn delay={50}>
         <div className="bg-card border border-card-border rounded-xl p-6">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-primary text-xl font-bold">
-                {displayName ? displayName[0].toUpperCase() : profileAddress.slice(2, 4).toUpperCase()}
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-primary text-lg font-bold">
+                {profileAddress.slice(2, 4).toUpperCase()}
               </span>
             </div>
-
-            <div className="flex-1 space-y-3">
-              {/* Username */}
-              {isOwnProfile ? (
-                <div>
-                  {editingUsername ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text" value={tempUsername} onChange={(e) => setTempUsername(e.target.value)}
-                        maxLength={20} placeholder="Enter username"
-                        className="bg-background border border-card-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary w-48"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") { setUsername(tempUsername); setEditingUsername(false); }
-                          if (e.key === "Escape") setEditingUsername(false);
-                        }}
-                      />
-                      <button onClick={() => { setUsername(tempUsername); setEditingUsername(false); }}
-                        className="text-xs text-success hover:underline">Save</button>
-                      <button onClick={() => setEditingUsername(false)}
-                        className="text-xs text-muted hover:underline">Cancel</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold">{username || "No username set"}</span>
-                      <button onClick={() => { setTempUsername(username); setEditingUsername(true); }}
-                        className="text-xs text-primary hover:underline">{username ? "Edit" : "Set username"}</button>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {/* Wallet address + explorer + copy */}
+            <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-muted text-xs font-mono">{profileAddress}</span>
+                <span className="text-sm font-mono">{profileAddress}</span>
                 <a
                   href={`https://megaeth.blockscout.com/address/${profileAddress}`}
                   target="_blank" rel="noopener noreferrer"
@@ -294,28 +273,7 @@ export default function ProfileAddressPage() {
                   )}
                 </button>
               </div>
-
-              {/* X Handle - OAuth linked */}
-              {isOwnProfile ? (
-                <div className="flex items-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-muted">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                  {xHandle ? (
-                    <>
-                      <a href={`https://x.com/${xHandle}`} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline">@{xHandle}</a>
-                      <a href="/api/auth/twitter" className="text-xs text-muted hover:text-primary hover:underline">Relink</a>
-                      <button onClick={() => setXHandle("")} className="text-xs text-muted hover:text-danger hover:underline">Unlink</button>
-                    </>
-                  ) : (
-                    <a href="/api/auth/twitter"
-                      className="text-sm text-primary hover:underline flex items-center gap-1">
-                      Connect X
-                    </a>
-                  )}
-                </div>
-              ) : null}
+              {isOwnProfile && <span className="text-xs text-primary font-medium">Your wallet</span>}
             </div>
           </div>
         </div>
@@ -346,7 +304,7 @@ export default function ProfileAddressPage() {
       {/* Tab content */}
       {activeTab === "overview" && (
         <FadeIn delay={150}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-card border border-card-border rounded-xl p-5">
               <p className="text-muted text-xs mb-1">Portfolio Value</p>
               <p className="text-2xl font-bold text-primary">
@@ -366,13 +324,6 @@ export default function ProfileAddressPage() {
               <p className="text-2xl font-bold text-danger">{burns.length}</p>
               <p className="text-xs text-muted mt-1">{burns.length} unique token{burns.length !== 1 ? "s" : ""}</p>
             </div>
-            {isOwnProfile && (
-              <div className="bg-card border border-card-border rounded-xl p-5">
-                <p className="text-muted text-xs mb-1">Profile</p>
-                <p className="text-2xl font-bold">{username || "---"}</p>
-                <p className="text-xs text-muted mt-1">{xHandle ? `@${xHandle}` : "No X linked"}</p>
-              </div>
-            )}
           </div>
         </FadeIn>
       )}

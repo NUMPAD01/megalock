@@ -35,6 +35,95 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Background gradient orbs */
+.bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bg-mesh::before,
+.bg-mesh::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.07;
+}
+
+.bg-mesh::before {
+  width: 600px;
+  height: 600px;
+  background: var(--primary);
+  top: -200px;
+  right: -100px;
+  animation: float 20s ease-in-out infinite;
+}
+
+.bg-mesh::after {
+  width: 500px;
+  height: 500px;
+  background: #6366f1;
+  bottom: -150px;
+  left: -100px;
+  animation: float 25s ease-in-out infinite reverse;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #2dd4a8 0%, #34ebc0 30%, #20c49a 60%, #2dd4a8 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 6s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+/* Card glow on hover */
+.card-glow {
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.card-glow:hover {
+  border-color: rgba(45, 212, 168, 0.3);
+  box-shadow: 0 0 20px rgba(45, 212, 168, 0.05), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* Subtle noise texture on cards */
+.card-texture {
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(45, 212, 168, 0.03) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 40%);
+}
+
+/* Accent line animation for sidebar */
+.accent-line {
+  position: relative;
+  overflow: hidden;
+}
+.accent-line::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0.3;
+}
+
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
