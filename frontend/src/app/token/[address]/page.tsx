@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useReadContract, usePublicClient } from "wagmi";
 import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "@/lib/contracts";
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
@@ -517,10 +518,9 @@ export default function TokenDetailPage() {
                             <td className="py-2 pr-4 text-muted">{i + 1}</td>
                             <td className="py-2 pr-4">
                               <div className="flex items-center gap-1.5">
-                                <a href={`https://megaeth.blockscout.com/address/${holder.address.hash}`}
-                                  target="_blank" rel="noopener noreferrer" className="font-mono text-xs hover:text-primary">
+                                <Link href={`/profile/${holder.address.hash}`} className="font-mono text-xs hover:text-primary">
                                   {isMe && myUsername ? myUsername : holder.address.name || shortenAddress(holder.address.hash)}
-                                </a>
+                                </Link>
                                 {isMe && myUsername && <span className="text-[10px] text-muted font-mono">({shortenAddress(holder.address.hash)})</span>}
                               </div>
                             </td>

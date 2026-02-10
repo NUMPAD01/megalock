@@ -93,7 +93,7 @@ export function Header() {
         {/* Nav items */}
         <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || (item.href === "/profile" && pathname.startsWith("/profile/"));
             return (
               <Link
                 key={item.href}
