@@ -6,22 +6,24 @@ import { MEGALOCK_ADDRESS, MEGALOCK_ABI, ERC20_ABI } from "@/lib/contracts";
 import { formatTokenAmount, formatDateTime, getLockTypeLabel, shortenAddress } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
+import { useProfile } from "@/contexts/ProfileContext";
 
-export default function MyLocksPage() {
+export default function ProfilePage() {
   const { address, isConnected } = useAccount();
+  const { username, xHandle, setUsername, setXHandle } = useProfile();
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [editingX, setEditingX] = useState(false);
+  const [tempUsername, setTempUsername] = useState("");
+  const [tempX, setTempX] = useState("");
 
   const { data: creatorLockIds } = useReadContract({
-    address: MEGALOCK_ADDRESS,
-    abi: MEGALOCK_ABI,
-    functionName: "getLocksByCreator",
+    address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "getLocksByCreator",
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   });
 
   const { data: beneficiaryLockIds } = useReadContract({
-    address: MEGALOCK_ADDRESS,
-    abi: MEGALOCK_ABI,
-    functionName: "getLocksByBeneficiary",
+    address: MEGALOCK_ADDRESS, abi: MEGALOCK_ABI, functionName: "getLocksByBeneficiary",
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   });
@@ -32,26 +34,122 @@ export default function MyLocksPage() {
   if (!isConnected) {
     return (
       <div className="bg-card border border-card-border rounded-xl p-8 text-center">
-        <h1 className="text-2xl font-bold mb-2">My Locks</h1>
-        <p className="text-muted">Connect your wallet to see your locks</p>
+        <h1 className="text-2xl font-bold mb-2">Profile</h1>
+        <p className="text-muted">Connect your wallet to view your profile</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <FadeIn><h1 className="text-3xl font-bold">My Locks</h1></FadeIn>
-      {lockIds.length === 0 ? (
-        <div className="bg-card border border-card-border rounded-xl p-8 text-center">
-          <p className="text-muted">No locks found for your address</p>
+      <FadeIn>
+        <h1 className="text-3xl font-bold">Profile</h1>
+      </FadeIn>
+
+      {/* Profile Card */}
+      <FadeIn delay={50}>
+        <div className="bg-card border border-card-border rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            {/* Avatar */}
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-primary text-xl font-bold">
+                {username ? username[0].toUpperCase() : address?.slice(2, 4).toUpperCase()}
+              </span>
+            </div>
+
+            <div className="flex-1 space-y-3">
+              {/* Username */}
+              <div>
+                {editingUsername ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text" value={tempUsername} onChange={(e) => setTempUsername(e.target.value)}
+                      maxLength={20} placeholder="Enter username"
+                      className="bg-background border border-card-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary w-48"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { setUsername(tempUsername); setEditingUsername(false); }
+                        if (e.key === "Escape") setEditingUsername(false);
+                      }}
+                    />
+                    <button onClick={() => { setUsername(tempUsername); setEditingUsername(false); }}
+                      className="text-xs text-success hover:underline">Save</button>
+                    <button onClick={() => setEditingUsername(false)}
+                      className="text-xs text-muted hover:underline">Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold">{username || "No username set"}</span>
+                    <button onClick={() => { setTempUsername(username); setEditingUsername(true); }}
+                      className="text-xs text-primary hover:underline">{username ? "Edit" : "Set username"}</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Wallet address */}
+              <div className="flex items-center gap-2">
+                <a href={`https://megaeth.blockscout.com/address/${address}`} target="_blank" rel="noopener noreferrer"
+                  className="text-muted text-xs font-mono hover:text-primary transition-colors">{address}</a>
+              </div>
+
+              {/* X Handle */}
+              <div>
+                {editingX ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted text-sm">@</span>
+                    <input
+                      type="text" value={tempX} onChange={(e) => setTempX(e.target.value.replace(/^@/, ""))}
+                      maxLength={30} placeholder="username"
+                      className="bg-background border border-card-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary w-48"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { setXHandle(tempX); setEditingX(false); }
+                        if (e.key === "Escape") setEditingX(false);
+                      }}
+                    />
+                    <button onClick={() => { setXHandle(tempX); setEditingX(false); }}
+                      className="text-xs text-success hover:underline">Save</button>
+                    <button onClick={() => setEditingX(false)}
+                      className="text-xs text-muted hover:underline">Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-muted">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    {xHandle ? (
+                      <a href={`https://x.com/${xHandle}`} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline">@{xHandle}</a>
+                    ) : (
+                      <span className="text-sm text-muted">Not linked</span>
+                    )}
+                    <button onClick={() => { setTempX(xHandle); setEditingX(true); }}
+                      className="text-xs text-primary hover:underline">{xHandle ? "Edit" : "Link X"}</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {lockIds.map((id) => (
-            <LockCard key={id.toString()} lockId={id} userAddress={address!} />
-          ))}
+      </FadeIn>
+
+      {/* My Locks */}
+      <FadeIn delay={100}>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">My Locks ({lockIds.length})</p>
+          {lockIds.length === 0 ? (
+            <div className="bg-card border border-card-border rounded-xl p-6 text-center">
+              <p className="text-muted text-sm">No locks found for your address</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {lockIds.map((id) => (
+                <LockCard key={id.toString()} lockId={id} userAddress={address!} />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </FadeIn>
     </div>
   );
 }
@@ -88,7 +186,6 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
   const isBeneficiary = lock.beneficiary.toLowerCase() === userAddress.toLowerCase();
   const isCreator = lock.creator.toLowerCase() === userAddress.toLowerCase();
   const vestedPercent = lock.totalAmount > 0n && vested ? Number((vested * 10000n) / lock.totalAmount) / 100 : 0;
-  const remaining = lock.totalAmount - lock.claimedAmount;
   const now = Math.floor(Date.now() / 1000);
   const startT = Number(lock.startTime);
   const endT = Number(lock.endTime);
@@ -116,7 +213,6 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
       className={`bg-card border rounded-xl transition-all ${lock.cancelled ? "border-danger/30 opacity-60" : expanded ? "border-primary/40" : "border-card-border"} cursor-pointer`}
       onClick={() => setExpanded(!expanded)}
     >
-      {/* Summary row */}
       <div className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 flex-wrap">
@@ -127,7 +223,7 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold">{formatTokenAmount(lock.totalAmount)} {tokenSymbol || "tokens"}</span>
-            <span className={`text-xs transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}>▼</span>
+            <span className={`text-xs transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}>&#9660;</span>
           </div>
         </div>
 
@@ -146,7 +242,7 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
               Beneficiary: <a href={`https://megaeth.blockscout.com/address/${lock.beneficiary}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{shortenAddress(lock.beneficiary)}</a>
             </span>
           </div>
-          <span>{formatDateTime(startT)} → {formatDateTime(endT)}</span>
+          <span>{formatDateTime(startT)} &rarr; {formatDateTime(endT)}</span>
         </div>
 
         <div className="mt-2 w-full bg-background rounded-full h-1.5 overflow-hidden">
@@ -154,10 +250,8 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
         </div>
       </div>
 
-      {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-card-border p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-          {/* Vesting Chart */}
           <div>
             <p className="text-xs text-muted font-medium mb-2">Unlock Schedule</p>
             <VestingChart
@@ -167,7 +261,6 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
             />
           </div>
 
-          {/* Detail grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-background rounded-lg p-3">
               <p className="text-muted text-[10px]">Total Locked</p>
@@ -188,7 +281,6 @@ function LockCard({ lockId, userAddress }: { lockId: bigint; userAddress: string
             </div>
           </div>
 
-          {/* Status + actions */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className={`text-xs font-medium px-2 py-1 rounded ${
               now >= endT ? "bg-success/10 text-success" :

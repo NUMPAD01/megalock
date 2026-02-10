@@ -7,6 +7,7 @@ import { MEGALOCK_ADDRESS, MEGALOCK_ABI, MEGABURN_ADDRESS, MEGABURN_ABI } from "
 import { shortenAddress, formatTokenAmount, formatDateTime, getLockTypeLabel } from "@/lib/utils";
 import { VestingChart } from "@/components/VestingChart";
 import { FadeIn } from "@/components/FadeIn";
+import { useProfile } from "@/contexts/ProfileContext";
 
 const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
 const BLOCKSCOUT_V1 = "https://megaeth.blockscout.com/api";
@@ -45,6 +46,7 @@ export default function TokenDetailPage() {
   const router = useRouter();
   const tokenAddress = params.address as string;
 
+  const { username: myUsername, address: myAddress } = useProfile();
   const [searchInput, setSearchInput] = useState(tokenAddress || "");
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [holders, setHolders] = useState<HolderInfo[]>([]);
@@ -508,19 +510,24 @@ export default function TokenDetailPage() {
                         const balance = BigInt(holder.value);
                         const pct = totalSupply > 0n ? Number((balance * 10000n) / totalSupply) / 100 : 0;
                         const isDev = deployerAddress && holder.address.hash.toLowerCase() === deployerAddress.toLowerCase();
+                        const isMe = myAddress && holder.address.hash.toLowerCase() === myAddress.toLowerCase();
 
                         return (
-                          <tr key={holder.address.hash} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : ""}`}>
+                          <tr key={holder.address.hash} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
                             <td className="py-2 pr-4 text-muted">{i + 1}</td>
                             <td className="py-2 pr-4">
-                              <a href={`https://megaeth.blockscout.com/address/${holder.address.hash}`}
-                                target="_blank" rel="noopener noreferrer" className="font-mono text-xs hover:text-primary">
-                                {holder.address.name || shortenAddress(holder.address.hash)}
-                              </a>
+                              <div className="flex items-center gap-1.5">
+                                <a href={`https://megaeth.blockscout.com/address/${holder.address.hash}`}
+                                  target="_blank" rel="noopener noreferrer" className="font-mono text-xs hover:text-primary">
+                                  {isMe && myUsername ? myUsername : holder.address.name || shortenAddress(holder.address.hash)}
+                                </a>
+                                {isMe && myUsername && <span className="text-[10px] text-muted font-mono">({shortenAddress(holder.address.hash)})</span>}
+                              </div>
                             </td>
                             <td className="py-2 pr-4 text-right font-medium">{formatTokenAmount(balance, decimals)}</td>
                             <td className="py-2 pr-4 text-right">{pct.toFixed(2)}%</td>
-                            <td className="py-2 text-right">
+                            <td className="py-2 text-right flex items-center justify-end gap-1">
+                              {isMe && <span className="bg-accent/10 text-accent text-xs font-medium px-2 py-0.5 rounded">YOU</span>}
                               {isDev && <span className="bg-danger/10 text-danger text-xs font-medium px-2 py-0.5 rounded">DEV</span>}
                             </td>
                           </tr>

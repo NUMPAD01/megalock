@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useProfile } from "@/contexts/ProfileContext";
 
 const NAV_ITEMS = [
   {
@@ -15,8 +16,8 @@ const NAV_ITEMS = [
     icon: <path d="M12 4v16m8-8H4" />,
   },
   {
-    href: "/locks", label: "My Locks",
-    icon: <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />,
+    href: "/profile", label: "Profile",
+    icon: <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
   },
   {
     href: "/burn", label: "Burn",
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
 export function Header() {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { username, isConnected, address } = useProfile();
 
   return (
     <>
@@ -136,6 +138,25 @@ export function Header() {
               }}
             </ConnectButton.Custom>
           </div>
+
+          {/* Profile mini card */}
+          {isConnected && address && (
+            <Link
+              href="/profile"
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-primary text-xs font-bold">
+                  {username ? username[0].toUpperCase() : address.slice(2, 4).toUpperCase()}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium truncate">{username || "Set username"}</p>
+                <p className="text-[10px] text-muted truncate">{address.slice(0, 6)}...{address.slice(-4)}</p>
+              </div>
+            </Link>
+          )}
 
           {/* Social links */}
           <div className="flex items-center justify-center gap-4">
