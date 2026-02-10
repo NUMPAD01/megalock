@@ -20,9 +20,20 @@ interface ActivityEvent {
   timestamp: number;
 }
 
+interface SearchResult {
+  type: string;
+  name: string;
+  symbol: string;
+  address: string;
+  icon_url: string | null;
+  token_type: string;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const { watchlist, removeToken } = useWatchlist();
   const publicClient = usePublicClient();
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
@@ -34,13 +45,30 @@ export default function Dashboard() {
 
   const totalLocks = nextLockId !== undefined ? Number(nextLockId) : null;
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     const query = searchInput.trim();
     if (!query) return;
     if (query.length === 42 && query.startsWith("0x")) {
       router.push(`/token/${query}`);
-    } else {
-      router.push(`/token?q=${encodeURIComponent(query)}`);
+      return;
+    }
+    if (query.length < 2) return;
+    setSearching(true);
+    setSearchResults([]);
+    try {
+      const res = await fetch(
+        `https://megaeth.blockscout.com/api/v2/search?q=${encodeURIComponent(query)}`
+      );
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const tokens = (data.items || []).filter(
+        (item: SearchResult) => item.type === "token" && item.token_type === "ERC-20"
+      );
+      setSearchResults(tokens);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -157,17 +185,48 @@ export default function Dashboard() {
 
         {/* Quick search */}
         <FadeIn delay={100}>
-          <div className="flex gap-2 mt-8 max-w-xl">
-            <input
-              type="text" placeholder="Search by name, symbol, or address (0x...)"
-              value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="flex-1 bg-card border border-card-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
-            />
-            <button onClick={handleSearch}
-              className="bg-primary hover:bg-primary-hover text-black font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm">
-              Scan
-            </button>
+          <div className="mt-8 max-w-xl">
+            <div className="flex gap-2">
+              <input
+                type="text" placeholder="Search by name, symbol, or address (0x...)"
+                value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="flex-1 bg-card border border-card-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+              />
+              <button onClick={handleSearch} disabled={searching}
+                className="bg-primary hover:bg-primary-hover disabled:opacity-50 text-black font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm">
+                {searching ? "..." : "Scan"}
+              </button>
+            </div>
+
+            {/* Search results dropdown */}
+            {searching && (
+              <div className="mt-2 bg-card border border-card-border rounded-xl p-4 animate-pulse h-16" />
+            )}
+            {!searching && searchResults.length > 0 && (
+              <div className="mt-2 bg-card border border-card-border rounded-xl overflow-hidden">
+                {searchResults.slice(0, 5).map((result) => (
+                  <Link
+                    key={result.address}
+                    href={`/token/${result.address}`}
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.04] border-b border-card-border/50 last:border-b-0 transition-colors"
+                  >
+                    {result.icon_url ? (
+                      <img src={result.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary text-[10px] font-bold">{result.symbol?.slice(0, 2)}</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium">{result.name}</span>
+                      <span className="text-muted text-xs ml-1.5">({result.symbol})</span>
+                    </div>
+                    <span className="text-muted text-[10px] font-mono">{shortenAddress(result.address)}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </FadeIn>
       </section>
