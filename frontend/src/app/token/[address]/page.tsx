@@ -185,6 +185,13 @@ export default function TokenDetailPage() {
             icon_url: null,
           };
         } catch {
+          // Check if it's a contract (e.g. LP pair) but not an ERC20 token
+          if (addressRes.ok) {
+            const addrData = await addressRes.json();
+            if (addrData.is_contract) {
+              throw new Error("This address is a contract (e.g. LP pair) but not an ERC20 token");
+            }
+          }
           throw new Error("Token not found on MegaETH");
         }
       }
