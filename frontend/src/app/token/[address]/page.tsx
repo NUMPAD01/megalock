@@ -50,22 +50,40 @@ function computeSafetyScore(params: {
   lockedAmount: bigint;
   totalBurned: bigint | undefined;
   totalSupply: bigint;
+  devBalancePct: number;
   devSoldStatus: "sold" | "holding" | "never_held" | null;
   holdersCount: number;
   isContractVerified: boolean | null;
   deployerTxCount: number | null;
 }): { total: number; breakdown: { label: string; score: number; max: number }[] } {
-  const { lockedAmount, totalBurned, totalSupply, devSoldStatus, holdersCount, isContractVerified, deployerTxCount } = params;
+  const { lockedAmount, totalBurned, totalSupply, devBalancePct, devSoldStatus, holdersCount, isContractVerified, deployerTxCount } = params;
 
   const lockedPct = totalSupply > 0n ? Number((lockedAmount * 10000n) / totalSupply) / 100 : 0;
   const burnedPct = totalSupply > 0n && totalBurned ? Number((totalBurned * 10000n) / totalSupply) / 100 : 0;
 
+  // Liquidity locked: more locked = better (cap 50%)
   const lockScore = Math.min(25, (lockedPct / 50) * 25);
+  // Supply burned: more burned = better (cap 10%)
   const burnScore = Math.min(15, (burnedPct / 10) * 15);
 
+  // Dev wallet: less supply held by dev = better
+  // 0% held = 25pts, 5% = 20pts, 20% = 12pts, 50% = 5pts, 90%+ = 0pts
   let devScore = 0;
-  if (devSoldStatus === "holding") devScore = 25;
-  else if (devSoldStatus === "never_held") devScore = 10;
+  if (devSoldStatus === "sold") {
+    devScore = 0; // dev dumped everything = bad
+  } else if (devBalancePct <= 1) {
+    devScore = 25; // <1% = very safe
+  } else if (devBalancePct <= 5) {
+    devScore = 20;
+  } else if (devBalancePct <= 10) {
+    devScore = 15;
+  } else if (devBalancePct <= 20) {
+    devScore = 10;
+  } else if (devBalancePct <= 50) {
+    devScore = 5;
+  } else {
+    devScore = 0; // >50% = dangerous
+  }
 
   const holderScore = Math.min(15, (holdersCount / 100) * 15);
   const verifiedScore = isContractVerified ? 10 : 0;
@@ -74,7 +92,7 @@ function computeSafetyScore(params: {
   const breakdown = [
     { label: "Liquidity Locked", score: Math.round(lockScore), max: 25 },
     { label: "Supply Burned", score: Math.round(burnScore), max: 15 },
-    { label: "Dev Status", score: devScore, max: 25 },
+    { label: "Dev Wallet", score: devScore, max: 25 },
     { label: "Holders", score: Math.round(holderScore), max: 15 },
     { label: "Contract Verified", score: verifiedScore, max: 10 },
     { label: "Deployer Activity", score: Math.round(txScore), max: 10 },
@@ -345,16 +363,20 @@ export default function TokenDetailPage() {
 
   const safetyScore = useMemo(() => {
     if (!tokenInfo || loading) return null;
+    const devBalancePct = (deployerBalance && totalSupply > 0n)
+      ? Number((BigInt(deployerBalance) * 10000n) / totalSupply) / 100
+      : 0;
     return computeSafetyScore({
       lockedAmount,
       totalBurned,
       totalSupply,
+      devBalancePct,
       devSoldStatus,
       holdersCount: parseInt(tokenInfo.holders_count) || 0,
       isContractVerified,
       deployerTxCount,
     });
-  }, [tokenInfo, loading, lockedAmount, totalBurned, totalSupply, devSoldStatus, isContractVerified, deployerTxCount]);
+  }, [tokenInfo, loading, lockedAmount, totalBurned, totalSupply, deployerBalance, devSoldStatus, isContractVerified, deployerTxCount]);
 
   const handleShareCertificate = async (lock: TokenLockInfo) => {
     if (!tokenInfo) return;
