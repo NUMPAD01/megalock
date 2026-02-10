@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
-import { Silkscreen } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { Header } from "@/components/layout/Header";
 
-const silkscreen = Silkscreen({
-  variable: "--font-silkscreen",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
-  weight: ["400", "700"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -24,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${silkscreen.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
           <div className="bg-mesh" />
