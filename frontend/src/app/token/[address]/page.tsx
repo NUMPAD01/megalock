@@ -507,7 +507,7 @@ export default function TokenDetailPage() {
           {/* Token Info Card */}
           <FadeIn delay={100}>
             <div className="bg-card border border-card-border rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-start gap-3 mb-4">
                 {tokenInfo.icon_url && <img src={tokenInfo.icon_url} alt={tokenInfo.symbol} className="w-10 h-10 rounded-full" />}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -529,6 +529,13 @@ export default function TokenDetailPage() {
                   </div>
                   <a href={`https://megaeth.blockscout.com/address/${tokenAddress}`} target="_blank" rel="noopener noreferrer" className="text-muted text-xs font-mono hover:text-primary transition-colors">{tokenAddress}</a>
                 </div>
+                <a href={`https://kumbaya.xyz/#/swap?outputCurrency=${tokenAddress}`} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 bg-primary hover:bg-primary-hover text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                  </svg>
+                  Buy
+                </a>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div><p className="text-muted text-xs">Total Supply</p><p className="font-semibold">{formatTokenAmount(totalSupply, decimals)}</p></div>

@@ -373,7 +373,8 @@ export default function Dashboard() {
                       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                   </button>
-                  <Link href={`/token/${token.address}`} className="block">
+                  <div className="flex items-start justify-between gap-2">
+                  <Link href={`/token/${token.address}`} className="block flex-1 min-w-0">
                     <h4 className="font-semibold group-hover:text-primary transition-colors">
                       {token.name} <span className="text-muted font-normal">({token.symbol})</span>
                     </h4>
@@ -390,6 +391,12 @@ export default function Dashboard() {
                       );
                     })()}
                   </Link>
+                  <a href={`https://kumbaya.xyz/#/swap?outputCurrency=${token.address}`} target="_blank" rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0 bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium py-1.5 px-3 rounded-lg transition-colors">
+                    Buy
+                  </a>
+                  </div>
                 </div>
               </FadeIn>
             ))}
