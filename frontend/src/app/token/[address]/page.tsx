@@ -68,6 +68,8 @@ export default function TokenDetailPage() {
   const [devSoldStatus, setDevSoldStatus] = useState<"sold" | "holding" | "never_held" | null>(null);
   const [devTotalReceived, setDevTotalReceived] = useState<bigint | null>(null);
   const [devTotalSold, setDevTotalSold] = useState<bigint | null>(null);
+  const [devBuyTokens, setDevBuyTokens] = useState<number>(0);
+  const [devSellTokens, setDevSellTokens] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lockedAmount, setLockedAmount] = useState(0n);
@@ -224,6 +226,8 @@ export default function TokenDetailPage() {
               setDeployerTxCount(info.dev.buys + info.dev.sells);
               setDevTotalReceived(BigInt(Math.round(info.dev.buyUsd * 1e6)));
               setDevTotalSold(BigInt(Math.round(info.dev.sellUsd * 1e6)));
+              setDevBuyTokens(info.dev.buyTokens || 0);
+              setDevSellTokens(info.dev.sellTokens || 0);
 
               // Read dev balance on-chain
               try {
@@ -505,8 +509,8 @@ export default function TokenDetailPage() {
                       <div>
                         <p className="text-muted text-xs">Dev Trades</p>
                         <div className="flex gap-3 text-sm">
-                          <span className="text-success">{Number(devTotalReceived ?? 0n) > 0 ? `${(Number(devTotalReceived) / 1e6).toFixed(2)}$ bought` : "0 buys"}</span>
-                          <span className="text-danger">{Number(devTotalSold ?? 0n) > 0 ? `${(Number(devTotalSold) / 1e6).toFixed(2)}$ sold` : "0 sells"}</span>
+                          <span className="text-success">{Number(devTotalReceived ?? 0n) > 0 ? `${(Number(devTotalReceived) / 1e6).toFixed(2)}$ bought (${devBuyTokens.toLocaleString()} ${tokenInfo.symbol})` : "0 buys"}</span>
+                          <span className="text-danger">{Number(devTotalSold ?? 0n) > 0 ? `${(Number(devTotalSold) / 1e6).toFixed(2)}$ sold (${devSellTokens.toLocaleString()} ${tokenInfo.symbol})` : "0 sells"}</span>
                         </div>
                         <p className="text-muted text-xs mt-0.5">{deployerTxCount} trade{deployerTxCount !== 1 ? "s" : ""} total</p>
                       </div>

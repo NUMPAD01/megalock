@@ -125,6 +125,8 @@ export async function GET(request: Request) {
     let devSells = 0;
     let devBuyUsd = 0;
     let devSellUsd = 0;
+    let devBuyTokens = 0;
+    let devSellTokens = 0;
     const creator = tokenData?.creator as string | undefined;
     const topTraders: TraderStats[] = [];
 
@@ -184,6 +186,7 @@ export async function GET(request: Request) {
         if (devStats) {
           devBuys = devStats.buys; devSells = devStats.sells;
           devBuyUsd = devStats.buyUsd; devSellUsd = devStats.sellUsd;
+          devBuyTokens = devStats.buyTokens; devSellTokens = devStats.sellTokens;
         }
       }
     }
@@ -239,6 +242,7 @@ export async function GET(request: Request) {
         address: devAddress,
         buys: devBuys, sells: devSells,
         buyUsd: devBuyUsd, sellUsd: devSellUsd,
+        buyTokens: devBuyTokens, sellTokens: devSellTokens,
       } : null,
     });
   } catch {
