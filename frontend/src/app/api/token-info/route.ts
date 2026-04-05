@@ -13,8 +13,9 @@ const rpc = createPublicClient({
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 const BLOCK_CHUNK = 99_999n;
+const SCAN_RANGE = 500_000n;
 const holdersCache = new Map<string, { data: Array<{ address: string; balance: bigint }>; ts: number }>();
-const HOLDERS_CACHE_TTL = 60_000;
+const HOLDERS_CACHE_TTL = 120_000;
 
 async function getOnChainHolders(tokenAddress: string): Promise<Array<{ address: string; balance: bigint }>> {
   const cacheKey = tokenAddress.toLowerCase();
@@ -23,26 +24,39 @@ async function getOnChainHolders(tokenAddress: string): Promise<Array<{ address:
 
   try {
     const currentBlock = await rpc.getBlockNumber();
+    const startBlock = currentBlock > SCAN_RANGE ? currentBlock - SCAN_RANGE : 0n;
     const balances = new Map<string, bigint>();
 
-    // Paginate getLogs in chunks of 100k blocks
-    for (let from = 0n; from <= currentBlock; from += BLOCK_CHUNK + 1n) {
+    // Build chunk ranges
+    const chunks: Array<{ from: bigint; to: bigint }> = [];
+    for (let from = startBlock; from <= currentBlock; from += BLOCK_CHUNK + 1n) {
       const to = from + BLOCK_CHUNK > currentBlock ? currentBlock : from + BLOCK_CHUNK;
-      try {
-        const logs = await rpc.getLogs({
-          address: tokenAddress as `0x${string}`,
-          event: TRANSFER_EVENT,
-          fromBlock: from,
-          toBlock: to,
-        });
-        for (const log of logs) {
+      chunks.push({ from, to });
+    }
+
+    // Parallel fetch (batch of 5)
+    for (let i = 0; i < chunks.length; i += 5) {
+      const batch = chunks.slice(i, i + 5);
+      const results = await Promise.allSettled(
+        batch.map(({ from, to }) =>
+          rpc.getLogs({
+            address: tokenAddress as `0x${string}`,
+            event: TRANSFER_EVENT,
+            fromBlock: from,
+            toBlock: to,
+          })
+        )
+      );
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        for (const log of r.value) {
           const sender = (log.args.from as string).toLowerCase();
           const receiver = (log.args.to as string).toLowerCase();
           const value = log.args.value as bigint;
           if (sender !== zeroAddress) balances.set(sender, (balances.get(sender) ?? 0n) - value);
           if (receiver !== zeroAddress) balances.set(receiver, (balances.get(receiver) ?? 0n) + value);
         }
-      } catch { /* skip chunk */ }
+      }
     }
 
     const result = Array.from(balances.entries())

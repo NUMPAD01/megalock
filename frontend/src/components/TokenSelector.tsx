@@ -53,24 +53,29 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
           }
         } catch { /* skip */ }
 
-        // 2. Discover additional tokens via Transfer events TO this wallet (scan recent blocks)
+        // 2. Discover additional tokens via Transfer events TO this wallet (last 500k blocks, parallel)
         try {
           const currentBlock = await rpcClient.getBlockNumber();
-          // Scan in chunks of 100k blocks, up to last 1M blocks
-          const startBlock = currentBlock > 1_000_000n ? currentBlock - 1_000_000n : 0n;
+          const startBlock = currentBlock > 500_000n ? currentBlock - 500_000n : 0n;
+          const chunks: Array<{ from: bigint; to: bigint }> = [];
           for (let from = startBlock; from <= currentBlock; from += 100_000n) {
-            try {
-              const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
-              const logs = await rpcClient.getLogs({
+            const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
+            chunks.push({ from, to });
+          }
+          const results = await Promise.allSettled(
+            chunks.map(({ from, to }) =>
+              rpcClient.getLogs({
                 event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
                 args: { to: walletAddress },
                 fromBlock: from,
                 toBlock: to,
-              });
-              for (const log of logs) {
-                knownAddresses.add(log.address.toLowerCase());
-              }
-            } catch { /* skip chunk */ }
+              })
+            )
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled") {
+              for (const log of r.value) knownAddresses.add(log.address.toLowerCase());
+            }
           }
         } catch { /* skip */ }
 

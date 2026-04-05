@@ -310,51 +310,31 @@ export default function ProfileAddressPage() {
 
 
 
-        // Discover via Transfer events (scan full history for this specific wallet)
-
+        // Discover via Transfer events (last 500k blocks, parallel)
         try {
-
-          const logs = await rpcClient.getLogs({
-
-            event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
-
-            args: { to: addr },
-
-            fromBlock: 0n,
-
-            toBlock: "latest",
-
-          });
-
-          for (const log of logs) tokenAddresses.add(log.address.toLowerCase());
-
-        } catch {
-
-          // If full scan fails (too many results), try recent blocks only
-
-          try {
-
-            const currentBlock = await rpcClient.getBlockNumber();
-
-            const fromBlock = currentBlock > 1000000n ? currentBlock - 1000000n : 0n;
-
-            const logs = await rpcClient.getLogs({
-
-              event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
-
-              args: { to: addr },
-
-              fromBlock,
-
-              toBlock: "latest",
-
-            });
-
-            for (const log of logs) tokenAddresses.add(log.address.toLowerCase());
-
-          } catch { /* skip */ }
-
-        }
+          const currentBlock = await rpcClient.getBlockNumber();
+          const startBlock = currentBlock > 500_000n ? currentBlock - 500_000n : 0n;
+          const chunks: Array<{ from: bigint; to: bigint }> = [];
+          for (let from = startBlock; from <= currentBlock; from += 100_000n) {
+            const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
+            chunks.push({ from, to });
+          }
+          const results = await Promise.allSettled(
+            chunks.map(({ from, to }) =>
+              rpcClient.getLogs({
+                event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+                args: { to: addr },
+                fromBlock: from,
+                toBlock: to,
+              })
+            )
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled") {
+              for (const log of r.value) tokenAddresses.add(log.address.toLowerCase());
+            }
+          }
+        } catch { /* skip */ }
 
 
 
