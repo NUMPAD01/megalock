@@ -296,43 +296,15 @@ export default function ProfileAddressPage() {
 
         try {
 
-          const res = await fetch("/api/known-tokens");
-
-          if (res.ok) {
-
-            const list = await res.json();
-
-            for (const t of list) tokenAddresses.add(t.address.toLowerCase());
-
+          const fetches = await Promise.allSettled([
+            fetch("/api/known-tokens").then(r => r.json()),
+            fetch("/api/tokens").then(r => r.json()),
+          ]);
+          if (fetches[0].status === "fulfilled" && Array.isArray(fetches[0].value)) {
+            for (const t of fetches[0].value) tokenAddresses.add((t.address || "").toLowerCase());
           }
-
-        } catch { /* skip */ }
-
-
-
-        // Discover via Transfer events (last 500k blocks, parallel)
-        try {
-          const currentBlock = await rpcClient.getBlockNumber();
-          const startBlock = currentBlock > 500_000n ? currentBlock - 500_000n : 0n;
-          const chunks: Array<{ from: bigint; to: bigint }> = [];
-          for (let from = startBlock; from <= currentBlock; from += 100_000n) {
-            const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
-            chunks.push({ from, to });
-          }
-          const results = await Promise.allSettled(
-            chunks.map(({ from, to }) =>
-              rpcClient.getLogs({
-                event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
-                args: { to: addr },
-                fromBlock: from,
-                toBlock: to,
-              })
-            )
-          );
-          for (const r of results) {
-            if (r.status === "fulfilled") {
-              for (const log of r.value) tokenAddresses.add(log.address.toLowerCase());
-            }
+          if (fetches[1].status === "fulfilled" && Array.isArray(fetches[1].value)) {
+            for (const t of fetches[1].value) tokenAddresses.add((t.address || "").toLowerCase());
           }
         } catch { /* skip */ }
 

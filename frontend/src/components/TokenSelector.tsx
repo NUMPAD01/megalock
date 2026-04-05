@@ -38,46 +38,30 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
     const fetchBalances = async () => {
       setLoading(true);
       try {
-        // 1. Get known tokens from API
-        let knownAddresses = new Set<string>();
-        let knownMap = new Map<string, KnownToken>();
-        try {
-          const res = await fetch("/api/known-tokens");
-          if (res.ok) {
-            const list: KnownToken[] = await res.json();
-            for (const t of list) {
-              const addr = t.address.toLowerCase();
+        // 1. Get all known tokens from both APIs
+        const knownAddresses = new Set<string>();
+        const knownMap = new Map<string, KnownToken>();
+        const fetches = await Promise.allSettled([
+          fetch("/api/known-tokens").then(r => r.json()),
+          fetch("/api/tokens").then(r => r.json()),
+        ]);
+        // known-tokens (official + enshrined with metadata)
+        if (fetches[0].status === "fulfilled" && Array.isArray(fetches[0].value)) {
+          for (const t of fetches[0].value) {
+            const addr = (t.address || "").toLowerCase();
+            if (addr) { knownAddresses.add(addr); knownMap.set(addr, t); }
+          }
+        }
+        // /api/tokens (all enshrined tokens, paginated)
+        if (fetches[1].status === "fulfilled" && Array.isArray(fetches[1].value)) {
+          for (const t of fetches[1].value) {
+            const addr = (t.address || "").toLowerCase();
+            if (addr && !knownAddresses.has(addr)) {
               knownAddresses.add(addr);
-              knownMap.set(addr, t);
+              knownMap.set(addr, { address: t.address, name: t.name || "Unknown", symbol: t.symbol || "???", decimals: 6, logoURI: t.image_uri });
             }
           }
-        } catch { /* skip */ }
-
-        // 2. Discover additional tokens via Transfer events TO this wallet (last 500k blocks, parallel)
-        try {
-          const currentBlock = await rpcClient.getBlockNumber();
-          const startBlock = currentBlock > 500_000n ? currentBlock - 500_000n : 0n;
-          const chunks: Array<{ from: bigint; to: bigint }> = [];
-          for (let from = startBlock; from <= currentBlock; from += 100_000n) {
-            const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
-            chunks.push({ from, to });
-          }
-          const results = await Promise.allSettled(
-            chunks.map(({ from, to }) =>
-              rpcClient.getLogs({
-                event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
-                args: { to: walletAddress },
-                fromBlock: from,
-                toBlock: to,
-              })
-            )
-          );
-          for (const r of results) {
-            if (r.status === "fulfilled") {
-              for (const log of r.value) knownAddresses.add(log.address.toLowerCase());
-            }
-          }
-        } catch { /* skip */ }
+        }
 
         // 3. Check balances for all discovered tokens
         const allAddresses = Array.from(knownAddresses);
