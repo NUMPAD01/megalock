@@ -209,32 +209,19 @@ export async function GET(request: Request) {
     // Get token created_at from Enshrined data
     const createdAt = tokenData ? (tokenData as Record<string, unknown>).created_at as string | undefined : undefined;
 
-    // Find who funded the dev wallet (first transfer received by dev on this token)
+    // Find who funded the dev wallet from Enshrined trades (first buy by someone else sent to dev)
     let fundedBy: string | null = null;
-    if (devAddress) {
-      try {
-        const currentBlock = await rpc.getBlockNumber();
-        // Scan in chunks to find first Transfer to dev for this specific token
-        for (let from = 0n; from <= currentBlock; from += BLOCK_CHUNK + 1n) {
-          const to = from + BLOCK_CHUNK > currentBlock ? currentBlock : from + BLOCK_CHUNK;
-          try {
-            const devLogs = await rpc.getLogs({
-              address: address as `0x${string}`,
-              event: TRANSFER_EVENT,
-              args: { to: devAddress as `0x${string}` },
-              fromBlock: from,
-              toBlock: to,
-            });
-            if (devLogs.length > 0) {
-              const firstSender = (devLogs[0].args.from as string).toLowerCase();
-              if (firstSender !== "0x0000000000000000000000000000000000000000") {
-                fundedBy = firstSender;
-              }
-              break;
-            }
-          } catch { /* skip chunk */ }
+    if (devAddress && tradesRes.status === "fulfilled" && Array.isArray(tradesRes.value)) {
+      const trades = tradesRes.value;
+      // Find earliest trade where tokens went to the dev (sorted oldest first)
+      const reversed = [...trades].reverse();
+      for (const t of reversed) {
+        const trader = (t.trader as string)?.toLowerCase();
+        if (trader && trader !== devAddress.toLowerCase() && t.is_buy) {
+          fundedBy = trader;
+          break;
         }
-      } catch { /* skip */ }
+      }
     }
 
     return NextResponse.json({
