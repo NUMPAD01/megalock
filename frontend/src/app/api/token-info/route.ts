@@ -92,15 +92,32 @@ export async function GET(request: Request) {
 
   try {
     const [listRes, tradesRes] = await Promise.allSettled([
-      fetch(`${ENSHRINED}/api/tokens`).then(r => r.json()),
+      // Fetch all tokens (paginated) to find this one
+      (async () => {
+        // Try default first
+        const res = await fetch(`${ENSHRINED}/api/tokens`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const found = data.find((t: { address: string }) => t.address?.toLowerCase() === address.toLowerCase());
+          if (found) return found;
+        }
+        // Paginate if not found
+        for (let page = 1; page <= 10; page++) {
+          const res = await fetch(`${ENSHRINED}/api/tokens?page=${page}&limit=50`);
+          const data = await res.json();
+          if (!Array.isArray(data) || data.length === 0) break;
+          const found = data.find((t: { address: string }) => t.address?.toLowerCase() === address.toLowerCase());
+          if (found) return found;
+          if (data.length < 50) break;
+        }
+        return null;
+      })(),
       fetch(`${ENSHRINED}/api/trades/${address}?limit=500`).then(r => r.json()),
     ]);
 
     let tokenData: Record<string, unknown> | null = null;
-    if (listRes.status === "fulfilled" && Array.isArray(listRes.value)) {
-      tokenData = listRes.value.find((t: { address: string }) =>
-        t.address?.toLowerCase() === address.toLowerCase()
-      ) || null;
+    if (listRes.status === "fulfilled" && listRes.value) {
+      tokenData = listRes.value as Record<string, unknown>;
     }
 
     let holders = 0;
