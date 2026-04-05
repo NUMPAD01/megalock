@@ -298,7 +298,7 @@ export default function TokenDetailPage() {
   }, [tokenAddress]);
 
   // Check TSCAN balance for dev status access (5M TSCAN required)
-  const TSCAN_ADDRESS = "0x20c0000000000000000000000088f2ce96f78Fa037";
+  const TSCAN_ADDRESS = "0x20c00000000000000000000088f2ce96f78Fa037";
   const TSCAN_REQUIRED = 5_000_000;
   useEffect(() => {
     if (!myAddress) { setHasDevAccess(false); return; }
