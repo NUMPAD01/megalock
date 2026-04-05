@@ -13,35 +13,45 @@ async function getAllTokens(): Promise<unknown[]> {
   }
 
   try {
-    // Fetch both: recent (no params) + paginated (for graduated tokens)
-    const [recentRes, paginatedRes] = await Promise.allSettled([
-      fetch(`${ENSHRINED_BASE}/api/tokens`).then(r => r.json()),
-      fetch(`${ENSHRINED_BASE}/api/tokens?page=1&limit=50`).then(r => r.json()),
-    ]);
-
     const seen = new Set<string>();
     const merged: unknown[] = [];
 
-    // Add recent tokens first (newest)
-    if (recentRes.status === "fulfilled" && Array.isArray(recentRes.value)) {
-      for (const t of recentRes.value) {
-        const addr = (t as { address: string }).address?.toLowerCase();
-        if (addr && !seen.has(addr)) {
-          seen.add(addr);
-          merged.push(t);
+    // Fetch recent tokens (newest first, no params)
+    try {
+      const recentRes = await fetch(`${ENSHRINED_BASE}/api/tokens`);
+      if (recentRes.ok) {
+        const data = await recentRes.json();
+        if (Array.isArray(data)) {
+          for (const t of data) {
+            const addr = (t as { address: string }).address?.toLowerCase();
+            if (addr && !seen.has(addr)) {
+              seen.add(addr);
+              merged.push(t);
+            }
+          }
         }
       }
-    }
+    } catch { /* skip */ }
 
-    // Add paginated tokens (includes more graduated)
-    if (paginatedRes.status === "fulfilled" && Array.isArray(paginatedRes.value)) {
-      for (const t of paginatedRes.value) {
-        const addr = (t as { address: string }).address?.toLowerCase();
-        if (addr && !seen.has(addr)) {
-          seen.add(addr);
-          merged.push(t);
+    // Paginate all pages to catch graduated/older tokens
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const res = await fetch(`${ENSHRINED_BASE}/api/tokens?page=${page}&limit=50`);
+        if (!res.ok) break;
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) break;
+        let added = 0;
+        for (const t of data) {
+          const addr = (t as { address: string }).address?.toLowerCase();
+          if (addr && !seen.has(addr)) {
+            seen.add(addr);
+            merged.push(t);
+            added++;
+          }
         }
-      }
+        if (data.length < 50) break;
+        if (added === 0) break;
+      } catch { break; }
     }
 
     if (merged.length > 0) {
