@@ -206,11 +206,36 @@ export async function GET(request: Request) {
       // For now, skip dev detection for non-Enshrined tokens
     }
 
+    // Get token created_at from Enshrined data
+    const createdAt = tokenData ? (tokenData as Record<string, unknown>).created_at as string | undefined : undefined;
+
+    // Find who funded the dev wallet (first ETH/USD sender to creator)
+    let fundedBy: string | null = null;
+    if (devAddress) {
+      try {
+        // Scan first few Transfer events to the dev wallet across all tokens
+        const devLogs = await rpc.getLogs({
+          event: TRANSFER_EVENT,
+          args: { to: devAddress as `0x${string}` },
+          fromBlock: 0n,
+          toBlock: 99_999n,
+        });
+        if (devLogs.length > 0) {
+          const firstSender = (devLogs[0].args.from as string).toLowerCase();
+          if (firstSender !== "0x0000000000000000000000000000000000000000") {
+            fundedBy = firstSender;
+          }
+        }
+      } catch { /* skip */ }
+    }
+
     return NextResponse.json({
       token: tokenData,
       holders: realHolders,
       migrated,
       topTraders,
+      createdAt: createdAt || null,
+      fundedBy,
       onChainHolders: onChainHolders.slice(0, 50).map(h => ({
         address: h.address,
         balance: h.balance.toString(),

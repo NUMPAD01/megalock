@@ -79,6 +79,9 @@ export default function TokenDetailPage() {
   const [dexData, setDexData] = useState<{priceUsd: string | null; mcap: number | null; volume24h: number | null} | null>(null);
   const [isMigrated, setIsMigrated] = useState(false);
   const [communityPage, setCommunityPage] = useState(0);
+  const [hasDevAccess, setHasDevAccess] = useState(false);
+  const [tokenCreatedAt, setTokenCreatedAt] = useState<string | null>(null);
+  const [devFundedBy, setDevFundedBy] = useState<string | null>(null);
   const COMMUNITY_PER_PAGE = 20;
 
   const publicClient = usePublicClient();
@@ -194,6 +197,8 @@ export default function TokenDetailPage() {
             if (info.migrated) setIsMigrated(true);
             if (info.topTraders) setTopTraders(info.topTraders);
             if (info.onChainHolders) setOnChainHolders(info.onChainHolders);
+            if (info.createdAt) setTokenCreatedAt(info.createdAt);
+            if (info.fundedBy) setDevFundedBy(info.fundedBy);
 
             // Token data (price/mcap/vol)
             const t = info.token;
@@ -288,13 +293,36 @@ export default function TokenDetailPage() {
     setIsMigrated(false);
     setOnChainHolders([]);
     setCommunityPage(0);
+    setTokenCreatedAt(null);
+    setDevFundedBy(null);
   }, [tokenAddress]);
 
-  // Fetch DexScreener data as fallback for price/mcap/volume
+  // Check TSCAN balance for dev status access (5M TSCAN required)
+  const TSCAN_ADDRESS = "0x20c0000000000000000000000088f2ce96f78Fa037";
+  const TSCAN_REQUIRED = 5_000_000;
   useEffect(() => {
-    if (!tokenAddress) return;
-    // Enshrined data is already fetched in fetchTokenData, no additional fetch needed
-  }, [tokenAddress]);
+    if (!myAddress) { setHasDevAccess(false); return; }
+    const checkAccess = async () => {
+      try {
+        const res = await fetch(`/api/wallet-balances?address=${myAddress}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.balances) {
+            const tscan = data.balances.find((t: { token: string }) =>
+              t.token.toLowerCase() === TSCAN_ADDRESS.toLowerCase()
+            );
+            if (tscan) {
+              const bal = Number(BigInt(tscan.balance || "0")) / 1e6;
+              setHasDevAccess(bal >= TSCAN_REQUIRED);
+              return;
+            }
+          }
+        }
+      } catch { /* skip */ }
+      setHasDevAccess(false);
+    };
+    checkAccess();
+  }, [myAddress]);
 
   // No explorer API available on Tempo - search is address-only
 
@@ -431,13 +459,31 @@ export default function TokenDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-card border border-card-border rounded-xl p-6">
                 <h3 className="font-semibold mb-3">Dev / Deployer</h3>
-                {deployerAddress ? (
+                {!hasDevAccess ? (
+                  <div className="text-center py-4">
+                    <p className="text-muted text-sm mb-2">Hold 5,000,000 $TSCAN to unlock Dev Status</p>
+                    <a href={`/token/${TSCAN_ADDRESS}`} className="text-primary text-xs hover:underline">Get $TSCAN</a>
+                  </div>
+                ) : deployerAddress ? (
                   <div className="space-y-3">
                     <div>
                       <p className="text-muted text-xs">Deployer Address</p>
                       <a href={`https://explore.mainnet.tempo.xyz/address/${deployerAddress}`} target="_blank" rel="noopener noreferrer"
                         className="text-primary text-sm font-mono hover:underline">{shortenAddress(deployerAddress)}</a>
                     </div>
+                    {tokenCreatedAt && (
+                      <div>
+                        <p className="text-muted text-xs">Token Created</p>
+                        <p className="text-sm font-medium">{new Date(tokenCreatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                      </div>
+                    )}
+                    {devFundedBy && (
+                      <div>
+                        <p className="text-muted text-xs">Dev Funded By</p>
+                        <a href={`https://explore.mainnet.tempo.xyz/address/${devFundedBy}`} target="_blank" rel="noopener noreferrer"
+                          className="text-primary text-xs font-mono hover:underline">{shortenAddress(devFundedBy)}</a>
+                      </div>
+                    )}
                     <div>
                       <p className="text-muted text-xs">Dev Token Balance</p>
                       {deployerBalance !== null ? (

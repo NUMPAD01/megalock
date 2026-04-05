@@ -561,15 +561,11 @@ export default function ProfileAddressPage() {
 
             <div className="bg-card border border-card-border rounded-xl p-5">
 
-              <p className="text-muted text-xs mb-1">Portfolio Value</p>
-
+              <p className="text-muted text-xs mb-1">Tokens Held</p>
               <p className="text-2xl font-bold text-primary">
-
-                {positionsLoading ? "..." : totalPortfolioValue > 0 ? formatUsd(totalPortfolioValue) : "$0"}
-
+                {positionsLoading ? "..." : positions.length}
               </p>
-
-              <p className="text-xs text-muted mt-1">{positions.length} token{positions.length !== 1 ? "s" : ""} held</p>
+              <p className="text-xs text-muted mt-1">{positions.length} token{positions.length !== 1 ? "s" : ""} in wallet</p>
 
             </div>
 
@@ -625,31 +621,12 @@ export default function ProfileAddressPage() {
 
             <div className="bg-card border border-card-border rounded-xl overflow-hidden">
 
-              {totalPortfolioValue > 0 && (
-                <div className="p-4 border-b border-card-border">
-                  <div>
-                    <p className="text-muted text-xs">Total Value</p>
-                    <p className="text-xl font-bold">{formatUsd(totalPortfolioValue)}</p>
-                  </div>
-                </div>
-              )}
-
               <div className="overflow-x-auto">
-
                 <table className="w-full text-sm">
-
                   <thead>
-
                     <tr className="text-muted text-xs border-b border-card-border">
-
                       <th className="text-left p-3">Token</th>
-
                       <th className="text-right p-3">Balance</th>
-
-                      <th className="text-right p-3">MCap</th>
-
-                      <th className="text-right p-3">Value</th>
-
                       <th className="text-right p-3">Actions</th>
 
                     </tr>
@@ -679,18 +656,6 @@ export default function ProfileAddressPage() {
                         <td className="p-3 text-right font-medium">
 
                           {formatTokenAmount(pos.balance, pos.decimals)}
-
-                        </td>
-
-                        <td className="p-3 text-right text-muted">
-
-                          {pos.mcap ? formatUsd(pos.mcap) : "\u2014"}
-
-                        </td>
-
-                        <td className="p-3 text-right font-medium">
-
-                          {pos.valueUsd ? formatUsd(pos.valueUsd) : "\u2014"}
 
                         </td>
 
