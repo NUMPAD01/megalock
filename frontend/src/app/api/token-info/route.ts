@@ -209,22 +209,30 @@ export async function GET(request: Request) {
     // Get token created_at from Enshrined data
     const createdAt = tokenData ? (tokenData as Record<string, unknown>).created_at as string | undefined : undefined;
 
-    // Find who funded the dev wallet (first ETH/USD sender to creator)
+    // Find who funded the dev wallet (first transfer received by dev on this token)
     let fundedBy: string | null = null;
     if (devAddress) {
       try {
-        // Scan first few Transfer events to the dev wallet across all tokens
-        const devLogs = await rpc.getLogs({
-          event: TRANSFER_EVENT,
-          args: { to: devAddress as `0x${string}` },
-          fromBlock: 0n,
-          toBlock: 99_999n,
-        });
-        if (devLogs.length > 0) {
-          const firstSender = (devLogs[0].args.from as string).toLowerCase();
-          if (firstSender !== "0x0000000000000000000000000000000000000000") {
-            fundedBy = firstSender;
-          }
+        const currentBlock = await rpc.getBlockNumber();
+        // Scan in chunks to find first Transfer to dev for this specific token
+        for (let from = 0n; from <= currentBlock; from += BLOCK_CHUNK + 1n) {
+          const to = from + BLOCK_CHUNK > currentBlock ? currentBlock : from + BLOCK_CHUNK;
+          try {
+            const devLogs = await rpc.getLogs({
+              address: address as `0x${string}`,
+              event: TRANSFER_EVENT,
+              args: { to: devAddress as `0x${string}` },
+              fromBlock: from,
+              toBlock: to,
+            });
+            if (devLogs.length > 0) {
+              const firstSender = (devLogs[0].args.from as string).toLowerCase();
+              if (firstSender !== "0x0000000000000000000000000000000000000000") {
+                fundedBy = firstSender;
+              }
+              break;
+            }
+          } catch { /* skip chunk */ }
         }
       } catch { /* skip */ }
     }

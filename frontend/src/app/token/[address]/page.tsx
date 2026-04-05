@@ -474,7 +474,13 @@ export default function TokenDetailPage() {
                     {tokenCreatedAt && (
                       <div>
                         <p className="text-muted text-xs">Token Created</p>
-                        <p className="text-sm font-medium">{new Date(tokenCreatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                        <p className="text-sm font-medium">{new Date(tokenCreatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} <span className="text-muted text-xs">({(() => {
+                          const diff = Math.floor((Date.now() - new Date(tokenCreatedAt).getTime()) / 1000);
+                          if (diff < 60) return `${diff}s ago`;
+                          if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                          if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                          return `${Math.floor(diff / 86400)}d ago`;
+                        })()})</span></p>
                       </div>
                     )}
                     {devFundedBy && (
