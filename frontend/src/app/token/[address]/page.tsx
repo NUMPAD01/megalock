@@ -508,9 +508,15 @@ export default function TokenDetailPage() {
                     {deployerTxCount !== null && deployerTxCount > 0 && (
                       <div>
                         <p className="text-muted text-xs">Dev Trades</p>
-                        <div className="flex gap-3 text-sm">
-                          <span className="text-success">{Number(devTotalReceived ?? 0n) > 0 ? `${(Number(devTotalReceived) / 1e6).toFixed(2)}$ bought (${devBuyTokens.toLocaleString()} ${tokenInfo.symbol})` : "0 buys"}</span>
-                          <span className="text-danger">{Number(devTotalSold ?? 0n) > 0 ? `${(Number(devTotalSold) / 1e6).toFixed(2)}$ sold (${devSellTokens.toLocaleString()} ${tokenInfo.symbol})` : "0 sells"}</span>
+                        <div className="flex gap-4 text-sm">
+                          <div>
+                            <p className="text-success font-semibold">{Number(devTotalReceived ?? 0n) > 0 ? `${(Number(devTotalReceived) / 1e6).toFixed(2)}$ bought` : "0 buys"}</p>
+                            {devBuyTokens > 0 && <p className="text-success/70 text-[10px]">{formatTokenAmount(BigInt(Math.round(devBuyTokens * 1e6)), 6)} {tokenInfo.symbol}</p>}
+                          </div>
+                          <div>
+                            <p className="text-danger font-semibold">{Number(devTotalSold ?? 0n) > 0 ? `${(Number(devTotalSold) / 1e6).toFixed(2)}$ sold` : "0 sells"}</p>
+                            {devSellTokens > 0 && <p className="text-danger/70 text-[10px]">{formatTokenAmount(BigInt(Math.round(devSellTokens * 1e6)), 6)} {tokenInfo.symbol}</p>}
+                          </div>
                         </div>
                         <p className="text-muted text-xs mt-0.5">{deployerTxCount} trade{deployerTxCount !== 1 ? "s" : ""} total</p>
                       </div>
