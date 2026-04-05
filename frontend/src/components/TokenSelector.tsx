@@ -41,9 +41,7 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
         // Fetch balances from Tempo Explorer API
         const withBalance: WalletToken[] = [];
         try {
-          const res = await fetch(`https://explore.mainnet.tempo.xyz/api/address/balances/${walletAddress}`, {
-            headers: { "Content-Type": "application/json" },
-          });
+          const res = await fetch(`/api/wallet-balances?address=${walletAddress}`);
           if (res.ok) {
             const data = await res.json();
             if (data?.balances) {

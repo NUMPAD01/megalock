@@ -288,9 +288,7 @@ export default function ProfileAddressPage() {
 
         // 2. Fetch token balances from Tempo Explorer API
         try {
-          const balRes = await fetch(`https://explore.mainnet.tempo.xyz/api/address/balances/${profileAddress}`, {
-            headers: { "Content-Type": "application/json" },
-          });
+          const balRes = await fetch(`/api/wallet-balances?address=${profileAddress}`);
           if (balRes.ok) {
             const balData = await balRes.json();
             if (balData?.balances) {
