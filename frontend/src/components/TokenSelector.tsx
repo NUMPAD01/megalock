@@ -53,21 +53,26 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
           }
         } catch { /* skip */ }
 
-        // 2. Discover additional tokens via Transfer events TO this wallet
+        // 2. Discover additional tokens via Transfer events TO this wallet (scan recent blocks)
         try {
-          const logs = await rpcClient.getLogs({
-            event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
-            args: { to: walletAddress },
-            fromBlock: 0n,
-            toBlock: "latest",
-          });
-          for (const log of logs) {
-            const tokenAddr = log.address.toLowerCase();
-            if (!knownAddresses.has(tokenAddr)) {
-              knownAddresses.add(tokenAddr);
-            }
+          const currentBlock = await rpcClient.getBlockNumber();
+          // Scan in chunks of 100k blocks, up to last 1M blocks
+          const startBlock = currentBlock > 1_000_000n ? currentBlock - 1_000_000n : 0n;
+          for (let from = startBlock; from <= currentBlock; from += 100_000n) {
+            try {
+              const to = from + 99_999n > currentBlock ? currentBlock : from + 99_999n;
+              const logs = await rpcClient.getLogs({
+                event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+                args: { to: walletAddress },
+                fromBlock: from,
+                toBlock: to,
+              });
+              for (const log of logs) {
+                knownAddresses.add(log.address.toLowerCase());
+              }
+            } catch { /* skip chunk */ }
           }
-        } catch { /* skip - might be too many logs */ }
+        } catch { /* skip */ }
 
         // 3. Check balances for all discovered tokens
         const allAddresses = Array.from(knownAddresses);

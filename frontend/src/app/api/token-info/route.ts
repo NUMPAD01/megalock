@@ -12,35 +12,48 @@ const rpc = createPublicClient({
 
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
+const BLOCK_CHUNK = 99_999n;
+const holdersCache = new Map<string, { data: Array<{ address: string; balance: bigint }>; ts: number }>();
+const HOLDERS_CACHE_TTL = 60_000;
+
 async function getOnChainHolders(tokenAddress: string): Promise<Array<{ address: string; balance: bigint }>> {
+  const cacheKey = tokenAddress.toLowerCase();
+  const cached = holdersCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < HOLDERS_CACHE_TTL) return cached.data;
+
   try {
-    const logs = await rpc.getLogs({
-      address: tokenAddress as `0x${string}`,
-      event: TRANSFER_EVENT,
-      fromBlock: 0n,
-      toBlock: "latest",
-    });
-
+    const currentBlock = await rpc.getBlockNumber();
     const balances = new Map<string, bigint>();
-    for (const log of logs) {
-      const from = (log.args.from as string).toLowerCase();
-      const to = (log.args.to as string).toLowerCase();
-      const value = log.args.value as bigint;
 
-      if (from !== zeroAddress) {
-        balances.set(from, (balances.get(from) ?? 0n) - value);
-      }
-      if (to !== zeroAddress) {
-        balances.set(to, (balances.get(to) ?? 0n) + value);
-      }
+    // Paginate getLogs in chunks of 100k blocks
+    for (let from = 0n; from <= currentBlock; from += BLOCK_CHUNK + 1n) {
+      const to = from + BLOCK_CHUNK > currentBlock ? currentBlock : from + BLOCK_CHUNK;
+      try {
+        const logs = await rpc.getLogs({
+          address: tokenAddress as `0x${string}`,
+          event: TRANSFER_EVENT,
+          fromBlock: from,
+          toBlock: to,
+        });
+        for (const log of logs) {
+          const sender = (log.args.from as string).toLowerCase();
+          const receiver = (log.args.to as string).toLowerCase();
+          const value = log.args.value as bigint;
+          if (sender !== zeroAddress) balances.set(sender, (balances.get(sender) ?? 0n) - value);
+          if (receiver !== zeroAddress) balances.set(receiver, (balances.get(receiver) ?? 0n) + value);
+        }
+      } catch { /* skip chunk */ }
     }
 
-    return Array.from(balances.entries())
+    const result = Array.from(balances.entries())
       .filter(([, bal]) => bal > 0n)
       .map(([addr, bal]) => ({ address: addr, balance: bal }))
       .sort((a, b) => (b.balance > a.balance ? 1 : -1));
+
+    holdersCache.set(cacheKey, { data: result, ts: Date.now() });
+    return result;
   } catch {
-    return [];
+    return cached?.data ?? [];
   }
 }
 
