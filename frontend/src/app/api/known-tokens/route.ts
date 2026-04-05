@@ -46,7 +46,7 @@ export async function GET() {
       }
     }
 
-    // Add Enshrined launchpad tokens
+    // Add Enshrined launchpad tokens (paginate all pages)
     if (enshrinedRes.status === "fulfilled" && Array.isArray(enshrinedRes.value)) {
       for (const t of enshrinedRes.value) {
         const addr = t.address?.toLowerCase();
@@ -63,33 +63,32 @@ export async function GET() {
       }
     }
 
-    // Also discover graduated/migrated tokens from recent trades
-    try {
-      // Fetch trades for popular graduated tokens to discover them
-      const knownGraduated = [
-        "0x20c00000000000000000000006dbfda465c4f57f", // T
-      ];
-      for (const addr of knownGraduated) {
-        if (!seen.has(addr.toLowerCase())) {
-          try {
-            const tradeRes = await fetch(`https://launch.enshrined.exchange/api/trades/${addr}?limit=1`);
-            if (tradeRes.ok) {
-              const trades = await tradeRes.json();
-              if (Array.isArray(trades) && trades.length > 0) {
-                seen.add(addr.toLowerCase());
-                // We'll read name/symbol from RPC on the client side
-                tokens.push({
-                  address: addr,
-                  name: "T",
-                  symbol: "$T",
-                  decimals: 6,
-                });
-              }
-            }
-          } catch { /* skip */ }
+    // Paginate Enshrined to catch graduated tokens
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const res = await fetch(`https://launch.enshrined.exchange/api/tokens?page=${page}&limit=50`);
+        if (!res.ok) break;
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) break;
+        let added = 0;
+        for (const t of data) {
+          const addr = t.address?.toLowerCase();
+          if (addr && !seen.has(addr)) {
+            seen.add(addr);
+            tokens.push({
+              address: t.address,
+              name: t.name || "Unknown",
+              symbol: t.symbol || "???",
+              decimals: 6,
+              logoURI: t.image_uri || undefined,
+            });
+            added++;
+          }
         }
-      }
-    } catch { /* skip */ }
+        if (data.length < 50) break;
+        if (added === 0) break;
+      } catch { break; }
+    }
 
     cache = { data: tokens, ts: Date.now() };
     return NextResponse.json(tokens);
