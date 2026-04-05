@@ -1,22 +1,22 @@
 import { defineChain } from "viem";
 
-export const megaeth = defineChain({
-  id: 4326,
-  name: "MegaETH",
+export const tempo = defineChain({
+  id: 4217,
+  name: "Tempo",
   nativeCurrency: {
-    name: "Ether",
-    symbol: "ETH",
+    name: "USD",
+    symbol: "USD",
     decimals: 18,
   },
   rpcUrls: {
     default: {
-      http: ["https://mainnet.megaeth.com/rpc"],
+      http: ["https://rpc.tempo.xyz"],
     },
   },
   blockExplorers: {
     default: {
-      name: "MegaETH Explorer",
-      url: "https://megaeth.blockscout.com",
+      name: "Tempo Explorer",
+      url: "https://explore.mainnet.tempo.xyz",
     },
   },
 });

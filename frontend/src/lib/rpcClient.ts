@@ -1,7 +1,7 @@
 import { createPublicClient, http } from "viem";
-import { megaeth } from "@/config/chains";
+import { tempo } from "@/config/chains";
 
 export const rpcClient = createPublicClient({
-  chain: megaeth,
+  chain: tempo,
   transport: http(),
 });

@@ -1,92 +1,101 @@
-import { formatUnits } from "viem";
-
-export function formatTokenAmount(amount: bigint, decimals: number = 18): string {
-  const formatted = formatUnits(amount, decimals);
-  const num = parseFloat(formatted);
-  if (num === 0) return "0";
-  if (num < 0.001) return "< 0.001";
-  if (num < 1) return num.toFixed(4);
-  if (num < 1000) return num.toFixed(2);
-  if (num < 1_000_000) return (num / 1000).toFixed(2) + "K";
-  return (num / 1_000_000).toFixed(2) + "M";
-}
-
-export function shortenAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-export function formatDate(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function formatDateTime(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function timestampToDateInputValue(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  return date.toISOString().slice(0, 16);
-}
-
-export function dateInputValueToTimestamp(value: string): number {
-  return Math.floor(new Date(value).getTime() / 1000);
-}
-
-export function getLockTypeLabel(lockType: number): string {
-  switch (lockType) {
-    case 0:
-      return "Timelock";
-    case 1:
-      return "Linear Vesting";
-    case 2:
-      return "Stepped Vesting";
-    default:
-      return "Unknown";
-  }
-}
-
-export function getVestingProgress(
-  claimedAmount: bigint,
-  totalAmount: bigint
-): number {
-  if (totalAmount === 0n) return 0;
-  return Number((claimedAmount * 10000n) / totalAmount) / 100;
-}
-
-export function getDateFromNow(days: number): string {
-  const date = new Date(Date.now() + days * 86400000);
-  const offset = date.getTimezoneOffset() * 60000;
-  const localDate = new Date(date.getTime() - offset);
-  return localDate.toISOString().slice(0, 16);
-}
-
-export function formatUsd(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(num) || num === 0) return "—";
-  if (num < 1) return `$${num.toFixed(4)}`;
-  if (num < 1000) return `$${num.toFixed(2)}`;
-  if (num < 1_000_000) return `$${(num / 1000).toFixed(1)}K`;
-  if (num < 1_000_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
-  return `$${(num / 1_000_000_000).toFixed(2)}B`;
-}
-
-export function timeAgo(timestamp: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - timestamp;
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
-  return `${Math.floor(diff / 2592000)}mo ago`;
-}
+import { formatUnits } from "viem";
+
+export function formatTokenAmount(amount: bigint, decimals: number = 18): string {
+  const formatted = formatUnits(amount, decimals);
+  const num = parseFloat(formatted);
+  if (num === 0) return "0";
+  if (num < 0.001) return "< 0.001";
+  if (num < 1) return num.toFixed(4);
+  if (num < 1000) return num.toFixed(2);
+  if (num < 1_000_000) return (num / 1000).toFixed(2) + "K";
+  return (num / 1_000_000).toFixed(2) + "M";
+}
+
+export function shortenAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export function formatDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatDateTime(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function timestampToDateInputValue(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  return date.toISOString().slice(0, 16);
+}
+
+export function dateInputValueToTimestamp(value: string): number {
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
+export function getLockTypeLabel(lockType: number): string {
+  switch (lockType) {
+    case 0:
+      return "Timelock";
+    case 1:
+      return "Linear Vesting";
+    case 2:
+      return "Stepped Vesting";
+    default:
+      return "Unknown";
+  }
+}
+
+export function getVestingProgress(
+  claimedAmount: bigint,
+  totalAmount: bigint
+): number {
+  if (totalAmount === 0n) return 0;
+  return Number((claimedAmount * 10000n) / totalAmount) / 100;
+}
+
+export function getDateFromNow(days: number): string {
+  const date = new Date(Date.now() + days * 86400000);
+  const offset = date.getTimezoneOffset() * 60000;
+  const localDate = new Date(date.getTime() - offset);
+  return localDate.toISOString().slice(0, 16);
+}
+
+export function formatUsd(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(num) || num === 0) return "—";
+  if (num < 0.0001) {
+    // Format as $0.0₅151 style
+    const str = num.toFixed(20);
+    const match = str.match(/^0\.(0+)/);
+    const zeros = match ? match[1].length : 0;
+    const significant = num.toFixed(zeros + 3).replace(/^0\.0+/, '');
+    return `$0.0{${zeros}}${significant}`;
+  }
+  if (num < 1) return `$${num.toFixed(4)}`;
+  if (num < 1000) return `$${num.toFixed(2)}`;
+  if (num < 10_000) return `$${(num / 1000).toFixed(2)}K`;
+  if (num < 1_000_000) return `$${(num / 1000).toFixed(1)}K`;
+  if (num < 1_000_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
+  return `$${(num / 1_000_000_000).toFixed(2)}B`;
+}
+
+export function timeAgo(timestamp: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - timestamp;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
+  return `${Math.floor(diff / 2592000)}mo ago`;
+}

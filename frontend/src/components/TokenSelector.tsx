@@ -2,29 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { formatUnits } from "viem";
+import { formatUnits, parseAbiItem } from "viem";
+import { rpcClient } from "@/lib/rpcClient";
+import { ERC20_ABI } from "@/lib/contracts";
 
-const BLOCKSCOUT_API = "https://megaeth.blockscout.com/api/v2";
-
-interface ApiTokenBalance {
-  token: {
-    address_hash: string;
-    name: string;
-    symbol: string;
-    decimals: string;
-    type: string;
-    icon_url: string | null;
-  };
-  value: string;
-}
-
-interface TokenItem {
+interface KnownToken {
   address: string;
   name: string;
   symbol: string;
   decimals: number;
-  iconUrl: string | null;
-  balance: string;
+  logoURI?: string;
+}
+
+interface WalletToken extends KnownToken {
+  balance: bigint;
 }
 
 interface TokenSelectorProps {
@@ -33,35 +24,140 @@ interface TokenSelectorProps {
 }
 
 export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
-  const { address } = useAccount();
-  const [tokens, setTokens] = useState<TokenItem[]>([]);
+  const { address: walletAddress } = useAccount();
+  const [tokens, setTokens] = useState<WalletToken[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [manualInput, setManualInput] = useState("");
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!address) return;
-    setLoading(true);
-    fetch(`${BLOCKSCOUT_API}/addresses/${address}/token-balances`)
-      .then((res) => res.json())
-      .then((data) => {
-        const erc20s = (data || [])
-          .filter(
-            (t: ApiTokenBalance) =>
-              t.token?.address_hash && t.token.type === "ERC-20" && BigInt(t.value) > 0n
+    if (!walletAddress) return;
+
+    const fetchBalances = async () => {
+      setLoading(true);
+      try {
+        // 1. Get known tokens from API
+        let knownAddresses = new Set<string>();
+        let knownMap = new Map<string, KnownToken>();
+        try {
+          const res = await fetch("/api/known-tokens");
+          if (res.ok) {
+            const list: KnownToken[] = await res.json();
+            for (const t of list) {
+              const addr = t.address.toLowerCase();
+              knownAddresses.add(addr);
+              knownMap.set(addr, t);
+            }
+          }
+        } catch { /* skip */ }
+
+        // 2. Discover additional tokens via Transfer events TO this wallet
+        try {
+          const logs = await rpcClient.getLogs({
+            event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+            args: { to: walletAddress },
+            fromBlock: 0n,
+            toBlock: "latest",
+          });
+          for (const log of logs) {
+            const tokenAddr = log.address.toLowerCase();
+            if (!knownAddresses.has(tokenAddr)) {
+              knownAddresses.add(tokenAddr);
+            }
+          }
+        } catch { /* skip - might be too many logs */ }
+
+        // 3. Check balances for all discovered tokens
+        const allAddresses = Array.from(knownAddresses);
+        const balanceResults = await Promise.allSettled(
+          allAddresses.map((addr) =>
+            rpcClient.readContract({
+              address: addr as `0x${string}`,
+              abi: ERC20_ABI,
+              functionName: "balanceOf",
+              args: [walletAddress],
+            })
           )
-          .map((t: ApiTokenBalance): TokenItem => ({
-            address: t.token.address_hash,
-            name: t.token.name,
-            symbol: t.token.symbol,
-            decimals: parseInt(t.token.decimals),
-            iconUrl: t.token.icon_url,
-            balance: t.value,
-          }));
-        setTokens(erc20s);
-      })
-      .catch(() => setTokens([]))
-      .finally(() => setLoading(false));
-  }, [address]);
+        );
+
+        // 4. For tokens with balance, resolve name/symbol/decimals if not known
+        const withBalance: WalletToken[] = [];
+        const toResolve: { addr: string; balance: bigint }[] = [];
+
+        for (let i = 0; i < allAddresses.length; i++) {
+          const result = balanceResults[i];
+          if (result.status === "fulfilled") {
+            const bal = result.value as bigint;
+            if (bal > 0n) {
+              const known = knownMap.get(allAddresses[i]);
+              if (known) {
+                withBalance.push({ ...known, balance: bal });
+              } else {
+                toResolve.push({ addr: allAddresses[i], balance: bal });
+              }
+            }
+          }
+        }
+
+        // 5. Resolve unknown tokens
+        if (toResolve.length > 0) {
+          const resolveResults = await Promise.allSettled(
+            toResolve.map(async ({ addr, balance }) => {
+              const [name, symbol, decimals] = await Promise.all([
+                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "name" }),
+                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }),
+                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "decimals" }),
+              ]);
+              return {
+                address: addr,
+                name: name as string,
+                symbol: symbol as string,
+                decimals: Number(decimals),
+                balance,
+              } as WalletToken;
+            })
+          );
+          for (const r of resolveResults) {
+            if (r.status === "fulfilled") withBalance.push(r.value);
+          }
+        }
+
+        withBalance.sort((a, b) => (b.balance > a.balance ? 1 : b.balance < a.balance ? -1 : 0));
+        setTokens(withBalance);
+      } catch {
+        setTokens([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBalances();
+  }, [walletAddress]);
+
+  const handleManualLoad = async () => {
+    const addr = manualInput.trim();
+    if (!addr || addr.length !== 42 || !addr.startsWith("0x")) {
+      setManualError("Enter a valid address (0x...)");
+      return;
+    }
+    setManualLoading(true);
+    setManualError(null);
+    try {
+      const [symbol, decimals] = await Promise.all([
+        rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }),
+        rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "decimals" }),
+      ]);
+      onSelect(addr, Number(decimals), symbol as string);
+      setOpen(false);
+      setManualInput("");
+    } catch {
+      setManualError("Not a valid ERC20/TIP-20 token");
+    } finally {
+      setManualLoading(false);
+    }
+  };
 
   const selected = selectedToken
     ? tokens.find((t) => t.address.toLowerCase() === selectedToken.toLowerCase())
@@ -69,16 +165,8 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
 
   if (loading) {
     return (
-      <div className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm text-muted">
+      <div className="w-full bg-background border border-card-border rounded-lg px-3 py-2.5 text-sm text-muted animate-pulse">
         Loading your tokens...
-      </div>
-    );
-  }
-
-  if (tokens.length === 0) {
-    return (
-      <div className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm text-muted">
-        No ERC20 tokens found in your wallet
       </div>
     );
   }
@@ -88,54 +176,87 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:border-primary flex items-center justify-between"
+        className="w-full bg-background border border-card-border rounded-lg px-3 py-2.5 text-sm text-left focus:outline-none focus:border-primary flex items-center justify-between"
       >
         {selected ? (
           <span className="flex items-center gap-2">
-            {selected.iconUrl && (
-              <img src={selected.iconUrl} alt="" className="w-5 h-5 rounded-full" />
-            )}
+            {selected.logoURI && <img src={selected.logoURI} alt="" className="w-5 h-5 rounded-full" />}
             <span className="font-medium">{selected.symbol}</span>
             <span className="text-muted">
-              — {formatUnits(BigInt(selected.balance), selected.decimals)} tokens
+              — {parseFloat(formatUnits(selected.balance, selected.decimals)).toLocaleString()} tokens
             </span>
           </span>
+        ) : selectedToken ? (
+          <span className="text-foreground font-mono text-xs">{selectedToken.slice(0, 10)}...{selectedToken.slice(-6)}</span>
         ) : (
-          <span className="text-muted">Select a token from your wallet</span>
+          <span className="text-muted">Select a token</span>
         )}
         <span className="text-muted">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-card border border-card-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {tokens.map((t) => {
-            const bal = formatUnits(BigInt(t.balance), t.decimals);
-            const isSelected = selectedToken && t.address.toLowerCase() === selectedToken.toLowerCase();
-            return (
+        <div className="absolute z-50 mt-1 w-full bg-card border border-card-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
+          {/* Manual input */}
+          <div className="p-2 border-b border-card-border">
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                placeholder="Or paste address (0x...)"
+                value={manualInput}
+                onChange={(e) => { setManualInput(e.target.value); setManualError(null); }}
+                onKeyDown={(e) => e.key === "Enter" && handleManualLoad()}
+                className="flex-1 bg-background border border-card-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono"
+              />
               <button
-                key={t.address}
                 type="button"
-                onClick={() => {
-                  onSelect(t.address, t.decimals, t.symbol);
-                  setOpen(false);
-                }}
-                className={`w-full px-3 py-2 text-sm text-left hover:bg-primary/10 flex items-center gap-2 ${
-                  isSelected ? "bg-primary/5" : ""
-                }`}
+                onClick={handleManualLoad}
+                disabled={manualLoading}
+                className="bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium px-3 rounded transition-colors disabled:opacity-50"
               >
-                {t.iconUrl && (
-                  <img src={t.iconUrl} alt="" className="w-5 h-5 rounded-full" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{t.symbol}</span>
-                    <span className="text-muted text-xs truncate">{t.name}</span>
-                  </div>
-                  <p className="text-muted text-xs">{parseFloat(bal).toLocaleString()} tokens</p>
-                </div>
+                {manualLoading ? "..." : "Load"}
               </button>
-            );
-          })}
+            </div>
+            {manualError && <p className="text-danger text-[10px] mt-1">{manualError}</p>}
+          </div>
+
+          {tokens.length === 0 ? (
+            <div className="px-3 py-4 text-center text-muted text-xs">
+              No tokens found in wallet
+            </div>
+          ) : (
+            tokens.map((t) => {
+              const bal = formatUnits(t.balance, t.decimals);
+              const isSelected = selectedToken && t.address.toLowerCase() === selectedToken.toLowerCase();
+              return (
+                <button
+                  key={t.address}
+                  type="button"
+                  onClick={() => {
+                    onSelect(t.address, t.decimals, t.symbol);
+                    setOpen(false);
+                  }}
+                  className={`w-full px-3 py-2.5 text-sm text-left hover:bg-primary/10 flex items-center gap-2 transition-colors ${
+                    isSelected ? "bg-primary/5" : ""
+                  }`}
+                >
+                  {t.logoURI ? (
+                    <img src={t.logoURI} alt="" className="w-5 h-5 rounded-full" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-card-border flex items-center justify-center shrink-0">
+                      <span className="text-[8px] font-bold text-muted">{t.symbol.slice(0, 2)}</span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{t.symbol}</span>
+                      <span className="text-muted text-xs truncate">{t.name}</span>
+                    </div>
+                    <p className="text-muted text-xs">{parseFloat(bal).toLocaleString()} tokens</p>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>
