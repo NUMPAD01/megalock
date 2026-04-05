@@ -78,7 +78,6 @@ export default function TokenDetailPage() {
   const [copiedLockId, setCopiedLockId] = useState<number | null>(null);
   const [dexData, setDexData] = useState<{priceUsd: string | null; mcap: number | null; volume24h: number | null} | null>(null);
   const [isMigrated, setIsMigrated] = useState(false);
-  const [communityTab, setCommunityTab] = useState<"traders" | "holders">("traders");
   const [communityPage, setCommunityPage] = useState(0);
   const COMMUNITY_PER_PAGE = 20;
 
@@ -288,7 +287,6 @@ export default function TokenDetailPage() {
     setDexData(null);
     setIsMigrated(false);
     setOnChainHolders([]);
-    setCommunityTab("traders");
     setCommunityPage(0);
   }, [tokenAddress]);
 
@@ -602,112 +600,58 @@ export default function TokenDetailPage() {
             </div>
           </FadeIn>
 
-          {/* Traders & Holders Tabs */}
-          {(topTraders.length > 0 || onChainHolders.length > 0) && (() => {
-            const holdersData = onChainHolders.length > 0 ? onChainHolders : [];
-            const activeList = communityTab === "traders" ? topTraders : holdersData;
-            const totalPages = Math.ceil(activeList.length / COMMUNITY_PER_PAGE);
+          {/* Top Holders */}
+          {onChainHolders.length > 0 && (() => {
+            const totalPages = Math.ceil(onChainHolders.length / COMMUNITY_PER_PAGE);
             const offset = communityPage * COMMUNITY_PER_PAGE;
-            const paginatedTraders = topTraders.slice(offset, offset + COMMUNITY_PER_PAGE);
-            const paginatedHolders = holdersData.slice(offset, offset + COMMUNITY_PER_PAGE);
+            const paginated = onChainHolders.slice(offset, offset + COMMUNITY_PER_PAGE);
 
             return (
               <FadeIn delay={300}>
                 <div className="bg-card border border-card-border rounded-xl p-6">
-                  <div className="flex gap-1 border-b border-card-border mb-4">
-                    <button onClick={() => { setCommunityTab("traders"); setCommunityPage(0); }}
-                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${communityTab === "traders" ? "border-primary text-primary" : "border-transparent text-muted hover:text-foreground"}`}>
-                      Traders <span className="text-xs opacity-50 ml-1">{topTraders.length}</span>
-                    </button>
-                    <button onClick={() => { setCommunityTab("holders"); setCommunityPage(0); }}
-                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${communityTab === "holders" ? "border-primary text-primary" : "border-transparent text-muted hover:text-foreground"}`}>
-                      Holders <span className="text-xs opacity-50 ml-1">{holdersData.length}</span>
-                    </button>
-                  </div>
-
+                  <h3 className="font-semibold mb-4">Top Holders <span className="text-xs text-muted font-normal ml-1">{onChainHolders.length}</span></h3>
                   <div className="overflow-x-auto">
-                    {communityTab === "traders" ? (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-muted text-xs border-b border-card-border">
-                            <th className="text-left pb-2 pr-4">#</th>
-                            <th className="text-left pb-2 pr-4">Address</th>
-                            <th className="text-right pb-2 pr-4">Bought</th>
-                            <th className="text-right pb-2 pr-4">Sold</th>
-                            <th className="text-right pb-2 pr-4">Net Tokens</th>
-                            <th className="text-right pb-2">PnL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedTraders.map((trader, i) => {
-                            const isDev = deployerAddress && trader.address.toLowerCase() === deployerAddress.toLowerCase();
-                            const isMe = myAddress && trader.address.toLowerCase() === myAddress.toLowerCase();
-                            return (
-                              <tr key={trader.address} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
-                                <td className="py-2 pr-4 text-muted">{offset + i + 1}</td>
-                                <td className="py-2 pr-4">
-                                  <div className="flex items-center gap-1.5">
-                                    <Link href={`/profile/${trader.address}`} className="font-mono text-xs hover:text-primary">{shortenAddress(trader.address)}</Link>
-                                    {isDev && <span className="bg-danger/10 text-danger text-[10px] font-medium px-1.5 py-0.5 rounded">DEV</span>}
-                                    {isMe && <span className="bg-accent/10 text-accent text-[10px] font-medium px-1.5 py-0.5 rounded">YOU</span>}
-                                  </div>
-                                </td>
-                                <td className="py-2 pr-4 text-right text-success text-xs">{trader.buys > 0 ? `$${trader.buyUsd.toFixed(2)}` : "—"}<span className="text-muted ml-1">({trader.buys})</span></td>
-                                <td className="py-2 pr-4 text-right text-danger text-xs">{trader.sells > 0 ? `$${trader.sellUsd.toFixed(2)}` : "—"}<span className="text-muted ml-1">({trader.sells})</span></td>
-                                <td className="py-2 pr-4 text-right font-medium text-xs">{trader.netTokens > 0 ? `${trader.netTokens.toLocaleString()}` : trader.netTokens === 0 ? "0" : `${trader.netTokens.toLocaleString()}`}</td>
-                                <td className={`py-2 text-right font-semibold text-xs ${trader.pnl >= 0 ? "text-success" : "text-danger"}`}>
-                                  {trader.pnl >= 0 ? "+" : ""}{formatUsd(Math.abs(trader.pnl))}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-muted text-xs border-b border-card-border">
-                            <th className="text-left pb-2 pr-4">#</th>
-                            <th className="text-left pb-2 pr-4">Address</th>
-                            <th className="text-right pb-2 pr-4">Balance</th>
-                            <th className="text-right pb-2 pr-4">% Supply</th>
-                            <th className="text-right pb-2">Tag</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedHolders.length > 0 ? paginatedHolders.map((holder, i) => {
-                            const balance = BigInt(holder.balance);
-                            const pct = totalSupply > 0n ? Number((balance * 10000n) / totalSupply) / 100 : 0;
-                            const isDev = deployerAddress && holder.address.toLowerCase() === deployerAddress.toLowerCase();
-                            const isMe = myAddress && holder.address.toLowerCase() === myAddress.toLowerCase();
-                            return (
-                              <tr key={holder.address} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
-                                <td className="py-2 pr-4 text-muted">{offset + i + 1}</td>
-                                <td className="py-2 pr-4">
-                                  <div className="flex items-center gap-1.5">
-                                    <Link href={`/profile/${holder.address}`} className="font-mono text-xs hover:text-primary">{shortenAddress(holder.address)}</Link>
-                                  </div>
-                                </td>
-                                <td className="py-2 pr-4 text-right font-medium text-xs">{formatTokenAmount(balance, decimals)}</td>
-                                <td className="py-2 pr-4 text-right text-xs text-muted">{pct.toFixed(2)}%</td>
-                                <td className="py-2 text-right flex items-center justify-end gap-1">
-                                  {isDev && <span className="bg-danger/10 text-danger text-[10px] font-medium px-1.5 py-0.5 rounded">DEV</span>}
-                                  {isMe && <span className="bg-accent/10 text-accent text-[10px] font-medium px-1.5 py-0.5 rounded">YOU</span>}
-                                </td>
-                              </tr>
-                            );
-                          }) : (
-                            <tr><td colSpan={5} className="py-4 text-center text-muted text-xs">No holder data available</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    )}
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-muted text-xs border-b border-card-border">
+                          <th className="text-left pb-2 pr-4">#</th>
+                          <th className="text-left pb-2 pr-4">Address</th>
+                          <th className="text-right pb-2 pr-4">Balance</th>
+                          <th className="text-right pb-2 pr-4">% Supply</th>
+                          <th className="text-right pb-2">Tag</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginated.map((holder, i) => {
+                          const balance = BigInt(holder.balance);
+                          const pct = totalSupply > 0n ? Number((balance * 10000n) / totalSupply) / 100 : 0;
+                          const isDev = deployerAddress && holder.address.toLowerCase() === deployerAddress.toLowerCase();
+                          const isMe = myAddress && holder.address.toLowerCase() === myAddress.toLowerCase();
+                          return (
+                            <tr key={holder.address} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
+                              <td className="py-2 pr-4 text-muted">{offset + i + 1}</td>
+                              <td className="py-2 pr-4">
+                                <div className="flex items-center gap-1.5">
+                                  <Link href={`/profile/${holder.address}`} className="font-mono text-xs hover:text-primary">{shortenAddress(holder.address)}</Link>
+                                </div>
+                              </td>
+                              <td className="py-2 pr-4 text-right font-medium text-xs">{formatTokenAmount(balance, decimals)}</td>
+                              <td className="py-2 pr-4 text-right text-xs text-muted">{pct.toFixed(2)}%</td>
+                              <td className="py-2 text-right flex items-center justify-end gap-1">
+                                {isDev && <span className="bg-danger/10 text-danger text-[10px] font-medium px-1.5 py-0.5 rounded">DEV</span>}
+                                {isMe && <span className="bg-accent/10 text-accent text-[10px] font-medium px-1.5 py-0.5 rounded">YOU</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
 
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4 pt-3 border-t border-card-border">
                       <span className="text-muted text-xs">
-                        {offset + 1}-{Math.min(offset + COMMUNITY_PER_PAGE, activeList.length)} of {activeList.length}
+                        {offset + 1}-{Math.min(offset + COMMUNITY_PER_PAGE, onChainHolders.length)} of {onChainHolders.length}
                       </span>
                       <div className="flex gap-2">
                         <button disabled={communityPage === 0} onClick={() => setCommunityPage(p => p - 1)}

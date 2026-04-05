@@ -13,18 +13,20 @@ const rpc = createPublicClient({
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 const BLOCK_CHUNK = 99_999n;
-const SCAN_RANGE = 500_000n;
+const SCAN_RANGE_DEFAULT = 500_000n;
+const SCAN_RANGE_FULL = 15_000_000n;
 const holdersCache = new Map<string, { data: Array<{ address: string; balance: bigint }>; ts: number }>();
 const HOLDERS_CACHE_TTL = 120_000;
 
-async function getOnChainHolders(tokenAddress: string): Promise<Array<{ address: string; balance: bigint }>> {
+async function getOnChainHolders(tokenAddress: string, fullScan = false): Promise<Array<{ address: string; balance: bigint }>> {
   const cacheKey = tokenAddress.toLowerCase();
   const cached = holdersCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < HOLDERS_CACHE_TTL) return cached.data;
 
   try {
     const currentBlock = await rpc.getBlockNumber();
-    const startBlock = currentBlock > SCAN_RANGE ? currentBlock - SCAN_RANGE : 0n;
+    const range = fullScan ? SCAN_RANGE_FULL : SCAN_RANGE_DEFAULT;
+    const startBlock = currentBlock > range ? currentBlock - range : 0n;
     const balances = new Map<string, bigint>();
 
     // Build chunk ranges
@@ -174,8 +176,18 @@ export async function GET(request: Request) {
       : false;
 
     // Fetch real on-chain holders from Transfer events
-    const onChainHolders = await getOnChainHolders(address);
+    // Full scan if token not on Enshrined (no trades found)
+    const needsFullScan = topTraders.length === 0;
+    const onChainHolders = await getOnChainHolders(address, needsFullScan);
     const realHolders = onChainHolders.length > 0 ? onChainHolders.length : holders;
+
+    // If no creator from Enshrined, detect from on-chain (first mint recipient is usually deployer)
+    let devAddress = creator || null;
+    if (!devAddress && onChainHolders.length > 0) {
+      // The largest holder or first in the list is often the deployer for non-Enshrined tokens
+      // But we can't be sure without the first Transfer from 0x0
+      // For now, skip dev detection for non-Enshrined tokens
+    }
 
     return NextResponse.json({
       token: tokenData,
@@ -186,8 +198,8 @@ export async function GET(request: Request) {
         address: h.address,
         balance: h.balance.toString(),
       })),
-      dev: creator ? {
-        address: creator,
+      dev: devAddress ? {
+        address: devAddress,
         buys: devBuys, sells: devSells,
         buyUsd: devBuyUsd, sellUsd: devSellUsd,
       } : null,
