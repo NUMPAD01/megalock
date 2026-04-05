@@ -38,85 +38,31 @@ export function TokenSelector({ onSelect, selectedToken }: TokenSelectorProps) {
     const fetchBalances = async () => {
       setLoading(true);
       try {
-        // 1. Get all known tokens from both APIs
-        const knownAddresses = new Set<string>();
-        const knownMap = new Map<string, KnownToken>();
-        const fetches = await Promise.allSettled([
-          fetch("/api/known-tokens").then(r => r.json()),
-          fetch("/api/tokens").then(r => r.json()),
-        ]);
-        // known-tokens (official + enshrined with metadata)
-        if (fetches[0].status === "fulfilled" && Array.isArray(fetches[0].value)) {
-          for (const t of fetches[0].value) {
-            const addr = (t.address || "").toLowerCase();
-            if (addr) { knownAddresses.add(addr); knownMap.set(addr, t); }
-          }
-        }
-        // /api/tokens (all enshrined tokens, paginated)
-        if (fetches[1].status === "fulfilled" && Array.isArray(fetches[1].value)) {
-          for (const t of fetches[1].value) {
-            const addr = (t.address || "").toLowerCase();
-            if (addr && !knownAddresses.has(addr)) {
-              knownAddresses.add(addr);
-              knownMap.set(addr, { address: t.address, name: t.name || "Unknown", symbol: t.symbol || "???", decimals: 6, logoURI: t.image_uri });
-            }
-          }
-        }
-
-        // 3. Check balances for all discovered tokens
-        const allAddresses = Array.from(knownAddresses);
-        const balanceResults = await Promise.allSettled(
-          allAddresses.map((addr) =>
-            rpcClient.readContract({
-              address: addr as `0x${string}`,
-              abi: ERC20_ABI,
-              functionName: "balanceOf",
-              args: [walletAddress],
-            })
-          )
-        );
-
-        // 4. For tokens with balance, resolve name/symbol/decimals if not known
+        // Fetch balances from Tempo Explorer API
         const withBalance: WalletToken[] = [];
-        const toResolve: { addr: string; balance: bigint }[] = [];
-
-        for (let i = 0; i < allAddresses.length; i++) {
-          const result = balanceResults[i];
-          if (result.status === "fulfilled") {
-            const bal = result.value as bigint;
-            if (bal > 0n) {
-              const known = knownMap.get(allAddresses[i]);
-              if (known) {
-                withBalance.push({ ...known, balance: bal });
-              } else {
-                toResolve.push({ addr: allAddresses[i], balance: bal });
+        try {
+          const res = await fetch(`https://explore.mainnet.tempo.xyz/api/address/balances/${walletAddress}`, {
+            headers: { "Content-Type": "application/json" },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.balances) {
+              for (const t of data.balances) {
+                const bal = BigInt(t.balance || "0");
+                if (bal > 0n) {
+                  withBalance.push({
+                    address: t.token,
+                    name: t.name || "Unknown",
+                    symbol: t.symbol || "???",
+                    decimals: t.decimals ?? 6,
+                    balance: bal,
+                    logoURI: undefined,
+                  });
+                }
               }
             }
           }
-        }
-
-        // 5. Resolve unknown tokens
-        if (toResolve.length > 0) {
-          const resolveResults = await Promise.allSettled(
-            toResolve.map(async ({ addr, balance }) => {
-              const [name, symbol, decimals] = await Promise.all([
-                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "name" }),
-                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }),
-                rpcClient.readContract({ address: addr as `0x${string}`, abi: ERC20_ABI, functionName: "decimals" }),
-              ]);
-              return {
-                address: addr,
-                name: name as string,
-                symbol: symbol as string,
-                decimals: Number(decimals),
-                balance,
-              } as WalletToken;
-            })
-          );
-          for (const r of resolveResults) {
-            if (r.status === "fulfilled") withBalance.push(r.value);
-          }
-        }
+        } catch { /* skip */ }
 
         withBalance.sort((a, b) => (b.balance > a.balance ? 1 : b.balance < a.balance ? -1 : 0));
         setTokens(withBalance);

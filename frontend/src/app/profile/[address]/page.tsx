@@ -286,199 +286,60 @@ export default function ProfileAddressPage() {
 
 
 
-        // 2. Discover tokens: known list + Transfer events
-
-        const tokenAddresses = new Set<string>();
-
-
-
-        // Known tokens from API
-
+        // 2. Fetch token balances from Tempo Explorer API
         try {
-
-          const fetches = await Promise.allSettled([
-            fetch("/api/known-tokens").then(r => r.json()),
-            fetch("/api/tokens").then(r => r.json()),
-          ]);
-          if (fetches[0].status === "fulfilled" && Array.isArray(fetches[0].value)) {
-            for (const t of fetches[0].value) tokenAddresses.add((t.address || "").toLowerCase());
-          }
-          if (fetches[1].status === "fulfilled" && Array.isArray(fetches[1].value)) {
-            for (const t of fetches[1].value) tokenAddresses.add((t.address || "").toLowerCase());
+          const balRes = await fetch(`https://explore.mainnet.tempo.xyz/api/address/balances/${profileAddress}`, {
+            headers: { "Content-Type": "application/json" },
+          });
+          if (balRes.ok) {
+            const balData = await balRes.json();
+            if (balData?.balances) {
+              for (const t of balData.balances) {
+                const bal = BigInt(t.balance || "0");
+                if (bal > 0n) {
+                  entries.push({
+                    token: t.token,
+                    name: t.name || "Unknown",
+                    symbol: t.symbol || "???",
+                    decimals: t.decimals ?? 6,
+                    balance: bal,
+                    priceUsd: null,
+                    priceChange24h: null,
+                    valueUsd: null,
+                    mcap: null,
+                  });
+                }
+              }
+            }
           }
         } catch { /* skip */ }
-
-
-
-        // 3. Check balances
-
-        const allAddrs = Array.from(tokenAddresses);
-
-        const balResults = await Promise.allSettled(
-
-          allAddrs.map((a) =>
-
-            rpcClient.readContract({ address: a as `0x${string}`, abi: ERC20_ABI, functionName: "balanceOf", args: [addr] })
-
-          )
-
-        );
-
-
-
-        // 4. Resolve token info for those with balance > 0
-
-        const toResolve: { address: string; balance: bigint }[] = [];
-
-        for (let i = 0; i < allAddrs.length; i++) {
-
-          const r = balResults[i];
-
-          if (r.status === "fulfilled") {
-
-            const bal = r.value as bigint;
-
-            if (bal > 0n) toResolve.push({ address: allAddrs[i], balance: bal });
-
-          }
-
-        }
-
-
-
-        const infoResults = await Promise.allSettled(
-
-          toResolve.map(async ({ address, balance }) => {
-
-            const [name, symbol, decimals] = await Promise.all([
-
-              rpcClient.readContract({ address: address as `0x${string}`, abi: ERC20_ABI, functionName: "name" }),
-
-              rpcClient.readContract({ address: address as `0x${string}`, abi: ERC20_ABI, functionName: "symbol" }),
-
-              rpcClient.readContract({ address: address as `0x${string}`, abi: ERC20_ABI, functionName: "decimals" }),
-
-            ]);
-
-            return {
-
-              token: address, name: name as string, symbol: symbol as string,
-
-              decimals: Number(decimals), balance,
-
-              priceUsd: null, priceChange24h: null, valueUsd: null, mcap: null,
-
-            } as PositionEntry;
-
-          })
-
-        );
-
-
-
-        for (const r of infoResults) {
-
-          if (r.status === "fulfilled") entries.push(r.value);
-
-        }
-
-
 
         // Enrich with Enshrined price data
-
         try {
-
           const enshrinedRes = await fetch("/api/tokens");
-
           if (enshrinedRes.ok) {
-
-            const allEnshrinedTokens = await enshrinedRes.json();
-
-            if (Array.isArray(allEnshrinedTokens)) {
-
+            const allTokens = await enshrinedRes.json();
+            if (Array.isArray(allTokens)) {
               for (const entry of entries) {
-
                 if (entry.token === "native") continue;
-
-                const eToken = allEnshrinedTokens.find((t: { address: string }) =>
-
+                const eToken = allTokens.find((t: { address: string }) =>
                   t.address?.toLowerCase() === entry.token.toLowerCase()
-
                 );
-
                 if (eToken) {
-
                   const vUsd = Number(eToken.virtual_usd || 0);
-
                   const vTokens = Number(eToken.virtual_tokens || 0);
-
                   if (vTokens > 0) {
-
                     const price = vUsd / vTokens;
-
                     entry.priceUsd = price;
-
                     const humanBal = Number(entry.balance) / (10 ** entry.decimals);
-
                     entry.valueUsd = price * humanBal;
-
                     entry.mcap = price * 1_000_000_000;
-
                   }
-
                 }
-
               }
-
             }
-
           }
-
         } catch { /* skip */ }
-
-
-
-        // Fetch PnL from trades for this wallet
-
-        try {
-
-          for (const entry of entries) {
-
-            if (entry.token === "native") continue;
-
-            try {
-
-              const infoRes = await fetch(`/api/token-info?address=${entry.token}`);
-
-              if (infoRes.ok) {
-
-                const info = await infoRes.json();
-
-                if (info?.topTraders) {
-
-                  const me = info.topTraders.find((t: { address: string }) =>
-
-                    t.address.toLowerCase() === profileAddress.toLowerCase()
-
-                  );
-
-                  if (me) {
-
-                    entry.priceChange24h = me.pnl; // reuse field for PnL
-
-                  }
-
-                }
-
-              }
-
-            } catch { /* skip */ }
-
-          }
-
-        } catch { /* skip */ }
-
-
 
         entries.sort((a, b) => (b.valueUsd ?? -1) - (a.valueUsd ?? -1));
 
@@ -766,46 +627,13 @@ export default function ProfileAddressPage() {
 
             <div className="bg-card border border-card-border rounded-xl overflow-hidden">
 
-              {(totalPortfolioValue > 0 || positions.some(p => p.priceChange24h !== null)) && (
-
-                <div className="p-4 border-b border-card-border flex gap-6">
-
-                  {totalPortfolioValue > 0 && (
-
-                    <div>
-
-                      <p className="text-muted text-xs">Total Value</p>
-
-                      <p className="text-xl font-bold">{formatUsd(totalPortfolioValue)}</p>
-
-                    </div>
-
-                  )}
-
-                  {(() => {
-
-                    const totalPnl = positions.reduce((sum, p) => sum + (p.priceChange24h ?? 0), 0);
-
-                    return totalPnl !== 0 ? (
-
-                      <div>
-
-                        <p className="text-muted text-xs">Total PnL</p>
-
-                        <p className={`text-xl font-bold ${totalPnl >= 0 ? "text-success" : "text-danger"}`}>
-
-                          {totalPnl >= 0 ? "+" : ""}{formatUsd(Math.abs(totalPnl))}
-
-                        </p>
-
-                      </div>
-
-                    ) : null;
-
-                  })()}
-
+              {totalPortfolioValue > 0 && (
+                <div className="p-4 border-b border-card-border">
+                  <div>
+                    <p className="text-muted text-xs">Total Value</p>
+                    <p className="text-xl font-bold">{formatUsd(totalPortfolioValue)}</p>
+                  </div>
                 </div>
-
               )}
 
               <div className="overflow-x-auto">
@@ -823,8 +651,6 @@ export default function ProfileAddressPage() {
                       <th className="text-right p-3">MCap</th>
 
                       <th className="text-right p-3">Value</th>
-
-                      <th className="text-right p-3">PnL</th>
 
                       <th className="text-right p-3">Actions</th>
 
@@ -867,22 +693,6 @@ export default function ProfileAddressPage() {
                         <td className="p-3 text-right font-medium">
 
                           {pos.valueUsd ? formatUsd(pos.valueUsd) : "\u2014"}
-
-                        </td>
-
-                        <td className={`p-3 text-right font-medium ${
-
-                          pos.priceChange24h === null ? "text-muted" :
-
-                          pos.priceChange24h >= 0 ? "text-success" : "text-danger"
-
-                        }`}>
-
-                          {pos.priceChange24h !== null
-
-                            ? `${pos.priceChange24h >= 0 ? "+" : ""}${formatUsd(Math.abs(pos.priceChange24h))}`
-
-                            : "\u2014"}
 
                         </td>
 
