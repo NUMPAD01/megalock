@@ -60,6 +60,7 @@ export default function TokenDetailPage() {
   const [searchInput, setSearchInput] = useState(tokenAddress || "");
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [topTraders, setTopTraders] = useState<Array<{ address: string; buys: number; sells: number; buyUsd: number; sellUsd: number; netTokens: number; pnl: number }>>([]);
+  const [onChainHolders, setOnChainHolders] = useState<Array<{ address: string; balance: string }>>([]);
   const [holders, setHolders] = useState<HolderInfo[]>([]);
   const [deployerAddress, setDeployerAddress] = useState<string | null>(null);
   const [deployerBalance, setDeployerBalance] = useState<string | null>(null);
@@ -189,10 +190,11 @@ export default function TokenDetailPage() {
         if (infoRes.ok) {
           const info = await infoRes.json();
           if (info) {
-            // Holders from unique traders
+            // Holders from on-chain Transfer events
             if (info.holders > 0) holdersCount = String(info.holders);
             if (info.migrated) setIsMigrated(true);
             if (info.topTraders) setTopTraders(info.topTraders);
+            if (info.onChainHolders) setOnChainHolders(info.onChainHolders);
 
             // Token data (price/mcap/vol)
             const t = info.token;
@@ -285,6 +287,7 @@ export default function TokenDetailPage() {
     setSearchInput(tokenAddress || "");
     setDexData(null);
     setIsMigrated(false);
+    setOnChainHolders([]);
     setCommunityTab("traders");
     setCommunityPage(0);
   }, [tokenAddress]);
@@ -600,12 +603,13 @@ export default function TokenDetailPage() {
           </FadeIn>
 
           {/* Traders & Holders Tabs */}
-          {topTraders.length > 0 && (() => {
-            const holdersList = [...topTraders].filter(t => t.netTokens > 0).sort((a, b) => b.netTokens - a.netTokens);
-            const currentList = communityTab === "traders" ? topTraders : holdersList;
-            const totalPages = Math.ceil(currentList.length / COMMUNITY_PER_PAGE);
-            const paginated = currentList.slice(communityPage * COMMUNITY_PER_PAGE, (communityPage + 1) * COMMUNITY_PER_PAGE);
+          {(topTraders.length > 0 || onChainHolders.length > 0) && (() => {
+            const holdersData = onChainHolders.length > 0 ? onChainHolders : [];
+            const activeList = communityTab === "traders" ? topTraders : holdersData;
+            const totalPages = Math.ceil(activeList.length / COMMUNITY_PER_PAGE);
             const offset = communityPage * COMMUNITY_PER_PAGE;
+            const paginatedTraders = topTraders.slice(offset, offset + COMMUNITY_PER_PAGE);
+            const paginatedHolders = holdersData.slice(offset, offset + COMMUNITY_PER_PAGE);
 
             return (
               <FadeIn delay={300}>
@@ -617,7 +621,7 @@ export default function TokenDetailPage() {
                     </button>
                     <button onClick={() => { setCommunityTab("holders"); setCommunityPage(0); }}
                       className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${communityTab === "holders" ? "border-primary text-primary" : "border-transparent text-muted hover:text-foreground"}`}>
-                      Holders <span className="text-xs opacity-50 ml-1">{holdersList.length}</span>
+                      Holders <span className="text-xs opacity-50 ml-1">{holdersData.length}</span>
                     </button>
                   </div>
 
@@ -635,7 +639,7 @@ export default function TokenDetailPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {paginated.map((trader, i) => {
+                          {paginatedTraders.map((trader, i) => {
                             const isDev = deployerAddress && trader.address.toLowerCase() === deployerAddress.toLowerCase();
                             const isMe = myAddress && trader.address.toLowerCase() === myAddress.toLowerCase();
                             return (
@@ -665,34 +669,36 @@ export default function TokenDetailPage() {
                           <tr className="text-muted text-xs border-b border-card-border">
                             <th className="text-left pb-2 pr-4">#</th>
                             <th className="text-left pb-2 pr-4">Address</th>
-                            <th className="text-right pb-2 pr-4">Tokens Held</th>
+                            <th className="text-right pb-2 pr-4">Balance</th>
                             <th className="text-right pb-2 pr-4">% Supply</th>
-                            <th className="text-right pb-2">Value</th>
+                            <th className="text-right pb-2">Tag</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {paginated.map((trader, i) => {
-                            const pct = (trader.netTokens / 1_000_000_000 * 100);
-                            const price = tokenInfo ? (Number(tokenInfo.exchange_rate) || 0) : 0;
-                            const value = trader.netTokens * price;
-                            const isDev = deployerAddress && trader.address.toLowerCase() === deployerAddress.toLowerCase();
-                            const isMe = myAddress && trader.address.toLowerCase() === myAddress.toLowerCase();
+                          {paginatedHolders.length > 0 ? paginatedHolders.map((holder, i) => {
+                            const balance = BigInt(holder.balance);
+                            const pct = totalSupply > 0n ? Number((balance * 10000n) / totalSupply) / 100 : 0;
+                            const isDev = deployerAddress && holder.address.toLowerCase() === deployerAddress.toLowerCase();
+                            const isMe = myAddress && holder.address.toLowerCase() === myAddress.toLowerCase();
                             return (
-                              <tr key={trader.address} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
+                              <tr key={holder.address} className={`border-b border-card-border/50 ${isDev ? "bg-primary/5" : isMe ? "bg-accent/5" : ""}`}>
                                 <td className="py-2 pr-4 text-muted">{offset + i + 1}</td>
                                 <td className="py-2 pr-4">
                                   <div className="flex items-center gap-1.5">
-                                    <Link href={`/profile/${trader.address}`} className="font-mono text-xs hover:text-primary">{shortenAddress(trader.address)}</Link>
-                                    {isDev && <span className="bg-danger/10 text-danger text-[10px] font-medium px-1.5 py-0.5 rounded">DEV</span>}
-                                    {isMe && <span className="bg-accent/10 text-accent text-[10px] font-medium px-1.5 py-0.5 rounded">YOU</span>}
+                                    <Link href={`/profile/${holder.address}`} className="font-mono text-xs hover:text-primary">{shortenAddress(holder.address)}</Link>
                                   </div>
                                 </td>
-                                <td className="py-2 pr-4 text-right font-medium text-xs">{trader.netTokens.toLocaleString()}</td>
+                                <td className="py-2 pr-4 text-right font-medium text-xs">{formatTokenAmount(balance, decimals)}</td>
                                 <td className="py-2 pr-4 text-right text-xs text-muted">{pct.toFixed(2)}%</td>
-                                <td className="py-2 text-right text-xs font-medium">{value > 0 ? formatUsd(value) : "—"}</td>
+                                <td className="py-2 text-right flex items-center justify-end gap-1">
+                                  {isDev && <span className="bg-danger/10 text-danger text-[10px] font-medium px-1.5 py-0.5 rounded">DEV</span>}
+                                  {isMe && <span className="bg-accent/10 text-accent text-[10px] font-medium px-1.5 py-0.5 rounded">YOU</span>}
+                                </td>
                               </tr>
                             );
-                          })}
+                          }) : (
+                            <tr><td colSpan={5} className="py-4 text-center text-muted text-xs">No holder data available</td></tr>
+                          )}
                         </tbody>
                       </table>
                     )}
@@ -701,7 +707,7 @@ export default function TokenDetailPage() {
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4 pt-3 border-t border-card-border">
                       <span className="text-muted text-xs">
-                        {offset + 1}-{Math.min(offset + COMMUNITY_PER_PAGE, currentList.length)} of {currentList.length}
+                        {offset + 1}-{Math.min(offset + COMMUNITY_PER_PAGE, activeList.length)} of {activeList.length}
                       </span>
                       <div className="flex gap-2">
                         <button disabled={communityPage === 0} onClick={() => setCommunityPage(p => p - 1)}

@@ -1,8 +1,48 @@
 import { NextResponse } from "next/server";
+import { createPublicClient, http, parseAbiItem, zeroAddress } from "viem";
 
 export const dynamic = "force-dynamic";
 
 const ENSHRINED = "https://launch.enshrined.exchange";
+
+const rpc = createPublicClient({
+  chain: { id: 4217, name: "Tempo", nativeCurrency: { name: "USD", symbol: "USD", decimals: 18 }, rpcUrls: { default: { http: ["https://rpc.tempo.xyz"] } } },
+  transport: http(),
+});
+
+const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+
+async function getOnChainHolders(tokenAddress: string): Promise<Array<{ address: string; balance: bigint }>> {
+  try {
+    const logs = await rpc.getLogs({
+      address: tokenAddress as `0x${string}`,
+      event: TRANSFER_EVENT,
+      fromBlock: 0n,
+      toBlock: "latest",
+    });
+
+    const balances = new Map<string, bigint>();
+    for (const log of logs) {
+      const from = (log.args.from as string).toLowerCase();
+      const to = (log.args.to as string).toLowerCase();
+      const value = log.args.value as bigint;
+
+      if (from !== zeroAddress) {
+        balances.set(from, (balances.get(from) ?? 0n) - value);
+      }
+      if (to !== zeroAddress) {
+        balances.set(to, (balances.get(to) ?? 0n) + value);
+      }
+    }
+
+    return Array.from(balances.entries())
+      .filter(([, bal]) => bal > 0n)
+      .map(([addr, bal]) => ({ address: addr, balance: bal }))
+      .sort((a, b) => (b.balance > a.balance ? 1 : -1));
+  } catch {
+    return [];
+  }
+}
 
 interface TraderStats {
   address: string;
@@ -106,11 +146,19 @@ export async function GET(request: Request) {
       ? !!(tokenData as Record<string, unknown>).migrated || !!(tokenData as Record<string, unknown>).completed || !!(tokenData as Record<string, unknown>).from_trades
       : false;
 
+    // Fetch real on-chain holders from Transfer events
+    const onChainHolders = await getOnChainHolders(address);
+    const realHolders = onChainHolders.length > 0 ? onChainHolders.length : holders;
+
     return NextResponse.json({
       token: tokenData,
-      holders,
+      holders: realHolders,
       migrated,
       topTraders,
+      onChainHolders: onChainHolders.slice(0, 50).map(h => ({
+        address: h.address,
+        balance: h.balance.toString(),
+      })),
       dev: creator ? {
         address: creator,
         buys: devBuys, sells: devSells,
